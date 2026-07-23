@@ -1,0 +1,7 @@
+.env
+node_modules/
+.next/
+postgres-data/
+uploads/
+*.log
+.DS_Store
