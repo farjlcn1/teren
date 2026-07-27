@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkOrderType {
+  MONTAZA
+  DEMONTAZA
+  INTERVENCIJA
+  PREMONTAZA
+  OSTALO
+}
+
+enum Difficulty {
+  OSNOVNA
+  ZAHTEVNA
+}
+
+enum InstallerName {
+  SIMON
+  VITO
+  SERGEJ
+  GREGOR
+  KLEMEN
+  OSTALO
+}
+
+enum OptionType {
+  DIN1
+  DIN2
+  DIN3
+  DIN4
+  DIN5
+  ANI1
+  ANI2
+  ANI3
+  ALL_CAN
+  FMSCAN
+  TACHO
+}
+
+enum WorkOrderStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum ClientSource {
+  MANUAL
+  IMPORT
+  SYNC
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  isActive     Boolean  @default(true)
+
+  canManageUsers   Boolean @default(false)
+  canViewAllOrders Boolean @default(false)
+  canExportData    Boolean @default(false)
+  canSendEmail     Boolean @default(false)
+  canEditOrders    Boolean @default(false)
+  canManageClients Boolean @default(false)
+  canManageVehicles Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdWorkOrders WorkOrder[]     @relation("CreatedBy")
+  workOrderEdits    WorkOrderEdit[]
+
+  @@map("users")
+}
+
+model Client {
+  id          String       @id @default(cuid())
+  name        String
+  address     String?
+  contactInfo String?
+  source      ClientSource @default(MANUAL)
+  externalId  String?      @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workOrders WorkOrder[]
+
+  @@map("clients")
+}
+
+model WorkOrder {
+  id     String @id @default(cuid())
+  ident  String @unique
+
+  orderDate  DateTime        @default(now())
+  type       WorkOrderType
+  difficulty Difficulty
+  status     WorkOrderStatus @default(ACTIVE)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  vehiclePlate String
+  vehicleBrand String
+  vehicleModel String
+  vehicleYear  Int
+
+  imei     String
+  imeiPrev String?
+
+  comment String?
+
+  signatureUrl String?
+  signedAt     DateTime?
+  lockedAt     DateTime?
+
+  sentAt DateTime?
+
+  createdById String
+  createdBy   User   @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  installers WorkOrderInstaller[]
+  options    WorkOrderOption[]
+  photos     WorkOrderPhoto[]
+  edits      WorkOrderEdit[]
+
+  @@index([orderDate])
+  @@index([clientId])
+  @@index([vehiclePlate])
+  @@index([imei])
+  @@map("work_orders")
+}
+
+model WorkOrderInstaller {
+  id          String        @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder     @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  name        InstallerName
+  otherText   String?
+
+  @@map("work_order_installers")
+}
+
+model WorkOrderOption {
+  id          String     @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  optionType  OptionType
+  comment     String?
+
+  @@unique([workOrderId, optionType])
+  @@map("work_order_options")
+}
+
+model WorkOrderPhoto {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  filePath    String
+  uploadedAt  DateTime  @default(now())
+
+  @@map("work_order_photos")
+}
+
+model WorkOrderEdit {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  editedById  String
+  editedBy    User      @relation(fields: [editedById], references: [id], onDelete: Restrict)
+  editedAt    DateTime  @default(now())
+  changesJson String
+
+  @@map("work_order_edits")
+}
+
+model DailySequence {
+  orderDate  DateTime @id @db.Date
+  lastNumber Int      @default(0)
+
+  @@map("daily_sequence")
+}
+
+model ClientSyncConfig {
+  id             String    @id @default("default")
+  apiUrl         String?
+  apiToken       String?
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+
+  @@map("client_sync_config")
+}
+
+model Vehicle {
+  id         String       @id @default(cuid())
+  plate      String       @unique
+  source     ClientSource @default(MANUAL)
+  externalId String?      @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicles")
+}
+
+model VehicleSyncConfig {
+  id             String    @id @default("default")
+  apiUrl         String?
+  apiToken       String?
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+
+  @@map("vehicle_sync_config")
+}

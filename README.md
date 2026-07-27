@@ -1,65 +1,36 @@
-# Teren — aplikacija za delovne naloge
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Spletna aplikacija (PWA) za zaključevanje delovnih nalogov monterjev sledilne opreme na terenu.
+## Getting Started
 
-## Namestitev na Raspberry Pi
-
-Predpogoj: Docker in Docker Compose sta že nameščena, Cloudflare Tunnel je nastavljen (glej dogovorjeno arhitekturo).
-
-1. Kloniraj repozitorij v `~/nalogi-app` (ali obstoječo mapo, ki si jo že pripravil):
-
-   ```bash
-   git clone https://github.com/farjlcn1/teren.git ~/nalogi-app
-   cd ~/nalogi-app
-   ```
-
-2. Ustvari `.env` datoteko iz predloge in izpolni prave vrednosti:
-
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-
-   - `POSTGRES_PASSWORD` — poljubno močno geslo za bazo
-   - `SESSION_SECRET` — generiraj z `openssl rand -hex 32`
-   - `SMTP_*` — podatki za pošiljanje e-pošte (SMTP strežnik podjetja)
-   - `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_ADMIN_NAME` — prvi admin uporabnik, ustvarjen ob prvem zagonu (mora ustrezati zahtevam za geslo: 8+ znakov, 1 velika črka, 1 številka, 1 poseben znak)
-
-3. Zgradi in zaženi:
-
-   ```bash
-   docker compose up -d --build
-   ```
-
-   Ob prvem zagonu se samodejno izvedejo migracije baze in ustvari začetni admin uporabnik (glej izpis z `docker compose logs -f app`).
-
-4. Preveri, da je `cloudflared` config (`~/.cloudflared/config.yml`) usmerjen na `http://localhost:3000` — aplikacija posluša na vratih 3000.
-
-5. Odpri `https://tvoja-domena.com` v brskalniku in se prijavi z `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`.
-
-## Posodobitev aplikacije (po spremembah kode)
+First, run the development server:
 
 ```bash
-cd ~/nalogi-app
-git pull
-docker compose up -d --build
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Migracije se ob vsakem zagonu samodejno preverijo in po potrebi izvedejo (`prisma migrate deploy`).
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Prvi koraki po namestitvi
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-1. Prijavi se kot admin.
-2. Pojdi na **Stranke** in dodaj vsaj eno stranko (dropdown na mobilnem obrazcu je prazen dokler ni strank).
-3. Pojdi na **Uporabniki** in ustvari uporabnike za monterje (brez posebnih pravic) ter po potrebi za pisarno (npr. `canViewAllOrders` + `canExportData` + `canSendEmail`).
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Struktura projekta
+## Learn More
 
-- `app/` — Next.js aplikacija (mobilni obrazec + admin pregled)
-- `app/prisma/schema.prisma` — shema baze
-- `docker-compose.yml` — PostgreSQL + aplikacija
-- `.env.example` — predloga za potrebne skrivnosti/nastavitve
+To learn more about Next.js, take a look at the following resources:
 
-## Backup
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-Priporočeno redno arhiviranje `./postgres-data` (baza) in `./uploads` (slike, podpisi) na lokacijo izven strežnika.
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
