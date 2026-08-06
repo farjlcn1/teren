@@ -150,6 +150,14 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
             </select>
           </label>
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Krivec
+            <select name="culprit" defaultValue={filters.culprit ?? ""} className={selectClass()}>
+              <option value="">vsi</option>
+              <option value="SLEDENJE">Sledenje</option>
+              <option value="STRANKA">Stranka</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
             Monter
             <select name="installer" defaultValue={filters.installer ?? ""} className={selectClass()}>
               <option value="">vsi</option>

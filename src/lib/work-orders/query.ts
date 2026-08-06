@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma, WorkOrderType, Difficulty, InstallerName, OptionType } from "@/generated/prisma/client";
+import type { Prisma, WorkOrderType, Difficulty, InstallerName, OptionType, Culprit } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/lib/auth/session";
 
 export type WorkOrderFilters = {
@@ -12,6 +12,7 @@ export type WorkOrderFilters = {
   difficulty?: string;
   installer?: string;
   option?: string;
+  culprit?: string;
   sort?: string;
   dir?: string;
 };
@@ -54,6 +55,7 @@ export function buildWorkOrderQuery(
   if (filters.option) {
     where.options = { some: { optionType: filters.option as OptionType } };
   }
+  if (filters.culprit) where.culprit = filters.culprit as Culprit;
 
   const dir: SortDir = filters.dir === "asc" ? "asc" : "desc";
   const sortField = filters.sort && SORT_FIELD_MAP[filters.sort] ? filters.sort : "orderDate";

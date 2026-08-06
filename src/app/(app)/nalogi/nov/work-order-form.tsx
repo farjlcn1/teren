@@ -300,6 +300,14 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
             </button>
           </div>
         </label>
+        <a
+          href="https://monter.sledenje.com/home"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 block w-full rounded-md border border-gray-300 bg-white px-3.5 py-2.5 text-center text-base text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 sm:px-3 sm:py-2 sm:text-sm"
+        >
+          📍 Pozicija
+        </a>
       </div>
 
       {type === "INTERVENCIJA" && (
