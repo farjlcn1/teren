@@ -19,6 +19,7 @@ const DIFFICULTY_LABELS: Record<string, string> = {
 };
 
 const OPTION_LABELS: Record<string, string> = {
+  DIN1: "DIN1 (IGN)",
   ALL_CAN: "ALL CAN",
   WIRE_TEMP1: "1 Wire Temp (1)",
   WIRE_TEMP2: "1 Wire Temp (2)",
