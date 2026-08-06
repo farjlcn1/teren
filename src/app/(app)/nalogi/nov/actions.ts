@@ -55,6 +55,7 @@ const baseSchema = z.object({
     .max(new Date().getFullYear() + 1, "Neveljavno leto."),
   imei: imeiSchema,
   imeiPrev: z.union([imeiSchema, z.literal("")]).optional(),
+  culprit: z.union([z.enum(["SLEDENJE", "STRANKA"]), z.literal("")]).optional(),
   comment: z.string().optional(),
   installers: z.array(installerSchema).min(1, "Izberi vsaj enega monterja."),
   options: z.array(optionSchema),
@@ -87,6 +88,7 @@ export async function createWorkOrder(
     vehicleYear: formData.get("vehicleYear"),
     imei: formData.get("imei"),
     imeiPrev: formData.get("imeiPrev") ?? "",
+    culprit: formData.get("culprit") ?? "",
     comment: formData.get("comment") ?? "",
     installers,
     options,
@@ -100,6 +102,10 @@ export async function createWorkOrder(
 
   if (data.type === "INTERVENCIJA" && !data.imeiPrev) {
     return { error: "Pri intervenciji je polje 'IMEI prej' obvezno." };
+  }
+
+  if (data.type === "INTERVENCIJA" && !data.culprit) {
+    return { error: "Pri intervenciji je polje 'Krivec' obvezno." };
   }
 
   for (const inst of data.installers) {
@@ -129,6 +135,7 @@ export async function createWorkOrder(
       vehicleYear: data.vehicleYear,
       imei: data.imei,
       imeiPrev: data.imeiPrev || null,
+      culprit: data.culprit || null,
       comment: data.comment || null,
       createdById: user.id,
       installers: { create: data.installers },

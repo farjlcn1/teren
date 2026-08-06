@@ -18,6 +18,11 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   ZAHTEVNA: "Zahtevna",
 };
 
+const CULPRIT_LABELS: Record<string, string> = {
+  SLEDENJE: "Sledenje",
+  STRANKA: "Stranka",
+};
+
 const OPTION_LABELS: Record<string, string> = {
   DIN1: "DIN1 (IGN)",
   ALL_CAN: "ALL CAN",
@@ -114,6 +119,13 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           <>
             <dt className="text-gray-500 dark:text-gray-400">IMEI prej</dt>
             <dd className="text-gray-900 dark:text-gray-100">{order.imeiPrev}</dd>
+          </>
+        )}
+
+        {order.culprit && (
+          <>
+            <dt className="text-gray-500 dark:text-gray-400">Krivec</dt>
+            <dd className="text-gray-900 dark:text-gray-100">{CULPRIT_LABELS[order.culprit] ?? order.culprit}</dd>
           </>
         )}
 

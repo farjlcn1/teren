@@ -78,6 +78,7 @@ export function EditWorkOrderForm({
     vehicleYear: string;
     imei: string;
     imeiPrev: string;
+    culprit: string;
     comment: string;
     installers: { name: string; otherText: string | null }[];
     options: { optionType: string; comment: string | null }[];
@@ -95,6 +96,7 @@ export function EditWorkOrderForm({
   const [vehicleYear, setVehicleYear] = useState(initial.vehicleYear);
   const [imei, setImei] = useState(initial.imei);
   const [imeiPrev, setImeiPrev] = useState(initial.imeiPrev);
+  const [culprit, setCulprit] = useState(initial.culprit);
   const [comment, setComment] = useState(initial.comment);
 
   const [installers, setInstallers] = useState<Record<string, boolean>>(
@@ -147,6 +149,7 @@ export function EditWorkOrderForm({
     fd.set("vehicleYear", vehicleYear);
     fd.set("imei", imei);
     fd.set("imeiPrev", type === "INTERVENCIJA" ? imeiPrev : "");
+    fd.set("culprit", type === "INTERVENCIJA" ? culprit : "");
     fd.set("comment", comment);
     fd.set("installers", JSON.stringify(selectedInstallers));
     fd.set("options", JSON.stringify(selectedOptions));
@@ -271,6 +274,31 @@ export function EditWorkOrderForm({
           ))}
         </div>
       </fieldset>
+
+      {type === "INTERVENCIJA" && (
+        <fieldset>
+          <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Krivec</legend>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {[
+              { value: "SLEDENJE", label: "Sledenje" },
+              { value: "STRANKA", label: "Stranka" },
+            ].map((c) => (
+              <label
+                key={c.value}
+                className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100"
+              >
+                <input
+                  type="radio"
+                  name="culprit"
+                  checked={culprit === c.value}
+                  onChange={() => setCulprit(c.value)}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
         Komentar

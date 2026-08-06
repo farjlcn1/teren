@@ -83,6 +83,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
 
   const [imei, setImei] = useState("");
   const [imeiPrev, setImeiPrev] = useState("");
+  const [culprit, setCulprit] = useState("");
   const [scanningField, setScanningField] = useState<"imei" | "imeiPrev" | null>(null);
 
   const handleScan = useCallback(
@@ -146,6 +147,9 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
     if (type === "INTERVENCIJA" && !/^\d{10}$/.test(imeiPrev)) {
       return setError("Pri intervenciji vnesi tudi veljaven IMEI prej (10 številk).");
     }
+    if (type === "INTERVENCIJA" && !culprit) {
+      return setError("Pri intervenciji izberi krivca.");
+    }
 
     const selectedInstallers = Object.entries(installers)
       .filter(([, checked]) => checked)
@@ -172,6 +176,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
     fd.set("vehicleYear", vehicleYear);
     fd.set("imei", imei);
     fd.set("imeiPrev", type === "INTERVENCIJA" ? imeiPrev : "");
+    fd.set("culprit", type === "INTERVENCIJA" ? culprit : "");
     fd.set("comment", comment);
     fd.set("installers", JSON.stringify(selectedInstallers));
     fd.set("options", JSON.stringify(selectedOptions));
@@ -386,6 +391,32 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
           </div>
         )}
       </fieldset>
+
+      {type === "INTERVENCIJA" && (
+        <fieldset>
+          <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Krivec</legend>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {[
+              { value: "SLEDENJE", label: "Sledenje" },
+              { value: "STRANKA", label: "Stranka" },
+            ].map((c) => (
+              <label
+                key={c.value}
+                className="flex items-center gap-2.5 rounded-md border border-gray-200 px-3.5 py-3 text-base text-gray-900 dark:border-gray-700 dark:text-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <input
+                  type="radio"
+                  name="culprit"
+                  checked={culprit === c.value}
+                  onChange={() => setCulprit(c.value)}
+                  className={checkboxClass()}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
         Komentar

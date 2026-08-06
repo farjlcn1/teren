@@ -11,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
   OSTALO: "Ostalo",
 };
 const DIFFICULTY_LABELS: Record<string, string> = { OSNOVNA: "Osnovna", ZAHTEVNA: "Zahtevna" };
+const CULPRIT_LABELS: Record<string, string> = { SLEDENJE: "Sledenje", STRANKA: "Stranka" };
 const OPTION_LABELS: Record<string, string> = {
   DIN1: "DIN1 (IGN)",
   ALL_CAN: "ALL CAN",
@@ -99,6 +100,12 @@ export async function generateWorkOrderPdf(workOrderId: string): Promise<Buffer>
             <View style={styles.row}>
               <Text style={styles.label}>IMEI prej</Text>
               <Text style={styles.value}>{order.imeiPrev}</Text>
+            </View>
+          )}
+          {order.culprit && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Krivec</Text>
+              <Text style={styles.value}>{CULPRIT_LABELS[order.culprit] ?? order.culprit}</Text>
             </View>
           )}
         </View>

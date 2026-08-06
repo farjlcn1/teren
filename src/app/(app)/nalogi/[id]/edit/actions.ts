@@ -47,6 +47,7 @@ const editSchema = z.object({
   vehicleYear: z.coerce.number().int().min(1950).max(new Date().getFullYear() + 1),
   imei: imeiSchema,
   imeiPrev: z.union([imeiSchema, z.literal("")]).optional(),
+  culprit: z.union([z.enum(["SLEDENJE", "STRANKA"]), z.literal("")]).optional(),
   comment: z.string().optional(),
   installers: z.array(installerSchema).min(1, "Izberi vsaj enega monterja."),
   options: z.array(optionSchema),
@@ -62,6 +63,7 @@ const scalarFieldLabels: Record<string, string> = {
   vehicleYear: "Letnik",
   imei: "IMEI",
   imeiPrev: "IMEI prej",
+  culprit: "Krivec",
   comment: "Komentar",
 };
 
@@ -89,6 +91,7 @@ export async function updateWorkOrder(id: string, _prevState: EditState, formDat
     vehicleYear: formData.get("vehicleYear"),
     imei: formData.get("imei"),
     imeiPrev: formData.get("imeiPrev") ?? "",
+    culprit: formData.get("culprit") ?? "",
     comment: formData.get("comment") ?? "",
     installers,
     options,
@@ -101,6 +104,9 @@ export async function updateWorkOrder(id: string, _prevState: EditState, formDat
   const data = parsed.data;
   if (data.type === "INTERVENCIJA" && !data.imeiPrev) {
     return { error: "Pri intervenciji je polje 'IMEI prej' obvezno." };
+  }
+  if (data.type === "INTERVENCIJA" && !data.culprit) {
+    return { error: "Pri intervenciji je polje 'Krivec' obvezno." };
   }
   for (const inst of data.installers) {
     if (inst.name === "OSTALO" && !inst.otherText?.trim()) {
@@ -125,6 +131,7 @@ export async function updateWorkOrder(id: string, _prevState: EditState, formDat
     vehicleYear: data.vehicleYear,
     imei: data.imei,
     imeiPrev: data.imeiPrev || null,
+    culprit: data.culprit || null,
     comment: data.comment || null,
   };
   const beforeValues: Record<string, unknown> = before;

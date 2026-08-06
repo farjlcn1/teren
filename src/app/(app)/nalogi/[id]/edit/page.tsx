@@ -32,6 +32,7 @@ export default async function EditWorkOrderPage({ params }: { params: Promise<{ 
           vehicleYear: String(order.vehicleYear),
           imei: order.imei,
           imeiPrev: order.imeiPrev ?? "",
+          culprit: order.culprit ?? "",
           comment: order.comment ?? "",
           installers: order.installers,
           options: order.options,

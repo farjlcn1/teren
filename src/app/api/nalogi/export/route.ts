@@ -12,6 +12,7 @@ const TYPE_LABELS: Record<string, string> = {
   OSTALO: "Ostalo",
 };
 const DIFFICULTY_LABELS: Record<string, string> = { OSNOVNA: "Osnovna", ZAHTEVNA: "Zahtevna" };
+const CULPRIT_LABELS: Record<string, string> = { SLEDENJE: "Sledenje", STRANKA: "Stranka" };
 const OPTION_TYPES = [
   "DIN1",
   "DIN2",
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
     { header: "Letnik", key: "vehicleYear", width: 10 },
     { header: "IMEI", key: "imei", width: 14 },
     { header: "IMEI prej", key: "imeiPrev", width: 14 },
+    { header: "Krivec", key: "culprit", width: 14 },
     ...OPTION_TYPES.map((o) => ({ header: OPTION_LABELS[o] ?? o, key: o, width: 14 })),
     { header: "Komentar", key: "comment", width: 30 },
     { header: "Status", key: "status", width: 12 },
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
       vehicleYear: o.vehicleYear,
       imei: o.imei,
       imeiPrev: o.imeiPrev ?? "",
+      culprit: o.culprit ? CULPRIT_LABELS[o.culprit] ?? o.culprit : "",
       comment: o.comment ?? "",
       status: o.status,
       createdBy: o.createdBy.fullName,

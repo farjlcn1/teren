@@ -55,6 +55,11 @@ enum WorkOrderStatus {
   CANCELLED
 }
 
+enum Culprit {
+  SLEDENJE
+  STRANKA
+}
+
 enum ClientSource {
   MANUAL
   IMPORT
@@ -120,6 +125,7 @@ model WorkOrder {
 
   imei     String
   imeiPrev String?
+  culprit  Culprit?
 
   comment String?
 
