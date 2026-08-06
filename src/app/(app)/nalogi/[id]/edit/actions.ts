@@ -24,6 +24,13 @@ const optionSchema = z.object({
     "ALL_CAN",
     "FMSCAN",
     "TACHO",
+    "WIRE_TEMP1",
+    "WIRE_TEMP2",
+    "WIRE_TEMP3",
+    "ID_KEY",
+    "RFID_125",
+    "RFID_1356",
+    "BUZZER",
   ]),
   comment: z.string().optional(),
 });

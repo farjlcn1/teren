@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import SignatureCanvas from "react-signature-canvas";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { createWorkOrder } from "./actions";
 import { ImeiScanner } from "./imei-scanner";
+import { SignatureModal } from "./signature-modal";
 import { ClientCombobox } from "@/components/client-combobox";
 import { PlateCombobox } from "@/components/plate-combobox";
 
@@ -36,9 +36,25 @@ const OPTION_TYPES = [
   "ALL_CAN",
   "FMSCAN",
   "TACHO",
+  "WIRE_TEMP1",
+  "WIRE_TEMP2",
+  "WIRE_TEMP3",
+  "ID_KEY",
+  "RFID_125",
+  "RFID_1356",
+  "BUZZER",
 ];
 
-const OPTION_LABELS: Record<string, string> = { ALL_CAN: "ALL CAN" };
+const OPTION_LABELS: Record<string, string> = {
+  ALL_CAN: "ALL CAN",
+  WIRE_TEMP1: "1 Wire Temp (1)",
+  WIRE_TEMP2: "1 Wire Temp (2)",
+  WIRE_TEMP3: "1 Wire Temp (3)",
+  ID_KEY: "ID",
+  RFID_125: "RFID 125 kHz",
+  RFID_1356: "RFID 13,56 MHz",
+  BUZZER: "Brenčač",
+};
 
 function fieldClass() {
   return "mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:py-2";
@@ -83,7 +99,8 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [comment, setComment] = useState("");
 
-  const sigRef = useRef<SignatureCanvas>(null);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
 
   useEffect(() => {
     const urls = photos.map((f) => URL.createObjectURL(f));
@@ -138,11 +155,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
       return setError("Vnesi ime monterja pri izbiri 'Ostalo'.");
     }
 
-    let signatureBlob: Blob | null = null;
-    if (sigRef.current && !sigRef.current.isEmpty()) {
-      const canvas = sigRef.current.getTrimmedCanvas();
-      signatureBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    }
+    const signatureBlob = signatureDataUrl ? await (await fetch(signatureDataUrl)).blob() : null;
 
     const selectedOptions = Object.entries(optionState)
       .filter(([, v]) => v.checked)
@@ -307,6 +320,12 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
       )}
 
       {scanningField && <ImeiScanner onScan={handleScan} onClose={() => setScanningField(null)} />}
+      {showSignatureModal && (
+        <SignatureModal
+          onSave={(dataUrl) => setSignatureDataUrl(dataUrl)}
+          onClose={() => setShowSignatureModal(false)}
+        />
+      )}
 
       <fieldset>
         <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">DIN / ANI / CAN</legend>
@@ -337,14 +356,16 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
 
       <fieldset>
         <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Slike</legend>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          multiple
-          onChange={handlePhotoChange}
-          className="mt-2 block w-full text-base text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-4 file:py-2.5 file:text-base dark:text-gray-300 dark:file:bg-gray-700 dark:file:text-gray-100 sm:text-sm sm:file:px-3 sm:file:py-2 sm:file:text-sm"
-        />
+        <div className="mt-2 flex gap-2">
+          <label className="flex-1 cursor-pointer rounded-md bg-gray-100 px-4 py-2.5 text-center text-base text-gray-700 dark:bg-gray-700 dark:text-gray-100 sm:py-2 sm:text-sm">
+            📷 Fotografiraj
+            <input type="file" accept="image/*" capture="environment" multiple onChange={handlePhotoChange} className="hidden" />
+          </label>
+          <label className="flex-1 cursor-pointer rounded-md bg-gray-100 px-4 py-2.5 text-center text-base text-gray-700 dark:bg-gray-700 dark:text-gray-100 sm:py-2 sm:text-sm">
+            🖼️ Iz galerije
+            <input type="file" accept="image/*" multiple onChange={handlePhotoChange} className="hidden" />
+          </label>
+        </div>
         {photoUrls.length > 0 && (
           <div className="mt-2 grid grid-cols-3 gap-2">
             {photoUrls.map((url, i) => (
@@ -379,26 +400,27 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
         <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Podpis stranke (neobvezno)
         </legend>
-        <div
-          className="mt-2 rounded-md border border-gray-300 bg-white dark:border-gray-600"
-          onPointerDown={() => {
-            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-          }}
-        >
-          <SignatureCanvas
-            ref={sigRef}
-            penColor="black"
-            clearOnResize={false}
-            canvasProps={{ className: "w-full h-48 touch-none" }}
-          />
-        </div>
         <button
           type="button"
-          onClick={() => sigRef.current?.clear()}
-          className="mt-2 py-1 text-base text-gray-500 underline dark:text-gray-400 sm:text-sm"
+          onClick={() => setShowSignatureModal(true)}
+          className="mt-2 flex h-24 w-full items-center justify-center rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
         >
-          Počisti podpis
+          {signatureDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={signatureDataUrl} alt="Podpis stranke" className="h-full max-w-full object-contain" />
+          ) : (
+            <span className="text-base text-gray-500 dark:text-gray-400 sm:text-sm">Tapni za podpis</span>
+          )}
         </button>
+        {signatureDataUrl && (
+          <button
+            type="button"
+            onClick={() => setSignatureDataUrl(null)}
+            className="mt-2 py-1 text-base text-gray-500 underline dark:text-gray-400 sm:text-sm"
+          >
+            Počisti podpis
+          </button>
+        )}
       </fieldset>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

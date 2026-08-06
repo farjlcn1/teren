@@ -12,8 +12,36 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const INSTALLERS = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"];
-const OPTION_TYPES = ["DIN1", "DIN2", "DIN3", "DIN4", "DIN5", "ANI1", "ANI2", "ANI3", "ALL_CAN", "FMSCAN", "TACHO"];
-const OPTION_LABELS: Record<string, string> = { ALL_CAN: "ALL CAN" };
+const OPTION_TYPES = [
+  "DIN1",
+  "DIN2",
+  "DIN3",
+  "DIN4",
+  "DIN5",
+  "ANI1",
+  "ANI2",
+  "ANI3",
+  "ALL_CAN",
+  "FMSCAN",
+  "TACHO",
+  "WIRE_TEMP1",
+  "WIRE_TEMP2",
+  "WIRE_TEMP3",
+  "ID_KEY",
+  "RFID_125",
+  "RFID_1356",
+  "BUZZER",
+];
+const OPTION_LABELS: Record<string, string> = {
+  ALL_CAN: "ALL CAN",
+  WIRE_TEMP1: "1 Wire Temp (1)",
+  WIRE_TEMP2: "1 Wire Temp (2)",
+  WIRE_TEMP3: "1 Wire Temp (3)",
+  ID_KEY: "ID",
+  RFID_125: "RFID 125 kHz",
+  RFID_1356: "RFID 13,56 MHz",
+  BUZZER: "Brenčač",
+};
 
 const SORT_OPTIONS = [
   { value: "orderDate", label: "Datum" },

@@ -11,7 +11,16 @@ const TYPE_LABELS: Record<string, string> = {
   OSTALO: "Ostalo",
 };
 const DIFFICULTY_LABELS: Record<string, string> = { OSNOVNA: "Osnovna", ZAHTEVNA: "Zahtevna" };
-const OPTION_LABELS: Record<string, string> = { ALL_CAN: "ALL CAN" };
+const OPTION_LABELS: Record<string, string> = {
+  ALL_CAN: "ALL CAN",
+  WIRE_TEMP1: "1 Wire Temp (1)",
+  WIRE_TEMP2: "1 Wire Temp (2)",
+  WIRE_TEMP3: "1 Wire Temp (3)",
+  ID_KEY: "ID",
+  RFID_125: "RFID 125 kHz",
+  RFID_1356: "RFID 13,56 MHz",
+  BUZZER: "Brenčač",
+};
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: "Helvetica" },
