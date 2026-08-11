@@ -44,6 +44,11 @@ const OPTION_LABELS: Record<string, string> = {
   BUZZER: "Brenčač",
 };
 
+const DEVICE_MODELS = ["FMC130", "FMC150", "FMC650", "FMC880", "TFT100", "OSTALO"];
+const DEVICE_MODEL_LABELS: Record<string, string> = {
+  OSTALO: "Drugo",
+};
+
 const SORT_OPTIONS = [
   { value: "orderDate", label: "Datum" },
   { value: "ident", label: "Ident" },
@@ -175,6 +180,17 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
               {OPTION_TYPES.map((o) => (
                 <option key={o} value={o}>
                   {OPTION_LABELS[o] ?? o}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Model naprave
+            <select name="deviceModel" defaultValue={filters.deviceModel ?? ""} className={selectClass()}>
+              <option value="">vsi</option>
+              {DEVICE_MODELS.map((dm) => (
+                <option key={dm} value={dm}>
+                  {DEVICE_MODEL_LABELS[dm] ?? dm}
                 </option>
               ))}
             </select>

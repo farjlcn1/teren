@@ -37,6 +37,11 @@ const optionSchema = z.object({
   comment: z.string().optional(),
 });
 
+const deviceModelSchema = z.object({
+  deviceModel: z.enum(["FMC130", "FMC150", "FMC650", "FMC880", "TFT100", "OSTALO"]),
+  comment: z.string().optional(),
+});
+
 const imeiSchema = z
   .string()
   .regex(/^\d{10}$/, "IMEI mora vsebovati natanko zadnjih 10 številk.");
@@ -59,6 +64,7 @@ const baseSchema = z.object({
   comment: z.string().optional(),
   installers: z.array(installerSchema).min(1, "Izberi vsaj enega monterja."),
   options: z.array(optionSchema),
+  deviceModels: z.array(deviceModelSchema),
 });
 
 export type CreateWorkOrderState = { error?: string } | undefined;
@@ -71,9 +77,11 @@ export async function createWorkOrder(
 
   let installers: unknown;
   let options: unknown;
+  let deviceModels: unknown;
   try {
     installers = JSON.parse(String(formData.get("installers") ?? "[]"));
     options = JSON.parse(String(formData.get("options") ?? "[]"));
+    deviceModels = JSON.parse(String(formData.get("deviceModels") ?? "[]"));
   } catch {
     return { error: "Napaka pri branju obrazca." };
   }
@@ -92,6 +100,7 @@ export async function createWorkOrder(
     comment: formData.get("comment") ?? "",
     installers,
     options,
+    deviceModels,
   });
 
   if (!parsed.success) {
@@ -111,6 +120,12 @@ export async function createWorkOrder(
   for (const inst of data.installers) {
     if (inst.name === "OSTALO" && !inst.otherText?.trim()) {
       return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
+    }
+  }
+
+  for (const dm of data.deviceModels) {
+    if (dm.deviceModel === "OSTALO" && !dm.comment?.trim()) {
+      return { error: "Vnesi napravo pri izbiri 'Drugo'." };
     }
   }
 
@@ -140,6 +155,7 @@ export async function createWorkOrder(
       createdById: user.id,
       installers: { create: data.installers },
       options: { create: data.options },
+      deviceModels: { create: data.deviceModels },
     },
   });
 

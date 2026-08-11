@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma, WorkOrderType, Difficulty, InstallerName, OptionType, Culprit } from "@/generated/prisma/client";
+import type { Prisma, WorkOrderType, Difficulty, InstallerName, OptionType, Culprit, DeviceModel } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/lib/auth/session";
 
 export type WorkOrderFilters = {
@@ -12,6 +12,7 @@ export type WorkOrderFilters = {
   difficulty?: string;
   installer?: string;
   option?: string;
+  deviceModel?: string;
   culprit?: string;
   sort?: string;
   dir?: string;
@@ -54,6 +55,9 @@ export function buildWorkOrderQuery(
   }
   if (filters.option) {
     where.options = { some: { optionType: filters.option as OptionType } };
+  }
+  if (filters.deviceModel) {
+    where.deviceModels = { some: { deviceModel: filters.deviceModel as DeviceModel } };
   }
   if (filters.culprit) where.culprit = filters.culprit as Culprit;
 

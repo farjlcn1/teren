@@ -45,6 +45,8 @@ const OPTION_TYPES = [
   "BUZZER",
 ];
 
+const DEVICE_MODELS = ["FMC130", "FMC150", "FMC650", "FMC880", "TFT100", "OSTALO"];
+
 const OPTION_LABELS: Record<string, string> = {
   DIN1: "DIN1 (IGN)",
   ALL_CAN: "ALL CAN",
@@ -96,6 +98,9 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
   );
 
   const [optionState, setOptionState] = useState<Record<string, { checked: boolean; comment: string }>>({});
+
+  const [deviceModel, setDeviceModel] = useState("");
+  const [deviceModelOtherText, setDeviceModelOtherText] = useState("");
 
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -159,12 +164,19 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
     if (installers.OSTALO && !installerOtherText.trim()) {
       return setError("Vnesi ime monterja pri izbiri 'Ostalo'.");
     }
+    if (deviceModel === "OSTALO" && !deviceModelOtherText.trim()) {
+      return setError("Vnesi napravo pri izbiri 'Drugo'.");
+    }
 
     const signatureBlob = signatureDataUrl ? await (await fetch(signatureDataUrl)).blob() : null;
 
     const selectedOptions = Object.entries(optionState)
       .filter(([, v]) => v.checked)
       .map(([optionType, v]) => ({ optionType, comment: v.comment || undefined }));
+
+    const selectedDeviceModels = deviceModel
+      ? [{ deviceModel, comment: deviceModel === "OSTALO" ? deviceModelOtherText : undefined }]
+      : [];
 
     const fd = new FormData();
     fd.set("type", type);
@@ -180,6 +192,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
     fd.set("comment", comment);
     fd.set("installers", JSON.stringify(selectedInstallers));
     fd.set("options", JSON.stringify(selectedOptions));
+    fd.set("deviceModels", JSON.stringify(selectedDeviceModels));
     if (signatureBlob) fd.set("signature", signatureBlob, "signature.png");
     photos.forEach((file) => fd.append("photos", file));
 
@@ -340,6 +353,35 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
           onClose={() => setShowSignatureModal(false)}
         />
       )}
+
+      <fieldset>
+        <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Model naprave</legend>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {DEVICE_MODELS.map((name) => (
+            <label
+              key={name}
+              className="flex items-center gap-2.5 rounded-md border border-gray-200 px-3.5 py-3 text-base text-gray-900 dark:border-gray-700 dark:text-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+            >
+              <input
+                type="radio"
+                name="deviceModel"
+                checked={deviceModel === name}
+                onChange={() => setDeviceModel(name)}
+                className={checkboxClass()}
+              />
+              {name === "OSTALO" ? "Drugo" : name}
+            </label>
+          ))}
+        </div>
+        {deviceModel === "OSTALO" && (
+          <input
+            value={deviceModelOtherText}
+            onChange={(e) => setDeviceModelOtherText(e.target.value)}
+            placeholder="Naprava"
+            className={fieldClass()}
+          />
+        )}
+      </fieldset>
 
       <fieldset>
         <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">DIN / ANI / CAN</legend>

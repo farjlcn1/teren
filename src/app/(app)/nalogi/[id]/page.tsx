@@ -35,6 +35,10 @@ const OPTION_LABELS: Record<string, string> = {
   BUZZER: "Brenčač",
 };
 
+const DEVICE_MODEL_LABELS: Record<string, string> = {
+  OSTALO: "Drugo",
+};
+
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
@@ -45,6 +49,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       client: true,
       installers: true,
       options: true,
+      deviceModels: true,
       photos: true,
       createdBy: true,
       edits: { include: { editedBy: true }, orderBy: { editedAt: "desc" } },
@@ -153,6 +158,20 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               <li key={o.id} className="text-gray-700 dark:text-gray-300">
                 <span className="font-medium">{OPTION_LABELS[o.optionType] ?? o.optionType}</span>
                 {o.comment ? ` — ${o.comment}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {order.deviceModels.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <h2 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Model naprave</h2>
+          <ul className="space-y-1 text-sm">
+            {order.deviceModels.map((dm) => (
+              <li key={dm.id} className="text-gray-700 dark:text-gray-300">
+                <span className="font-medium">{DEVICE_MODEL_LABELS[dm.deviceModel] ?? dm.deviceModel}</span>
+                {dm.comment ? ` — ${dm.comment}` : ""}
               </li>
             ))}
           </ul>

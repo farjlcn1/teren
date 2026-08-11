@@ -66,6 +66,15 @@ enum ClientSource {
   SYNC
 }
 
+enum DeviceModel {
+  FMC130
+  FMC150
+  FMC650
+  FMC880
+  TFT100
+  OSTALO
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -141,10 +150,11 @@ model WorkOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  installers WorkOrderInstaller[]
-  options    WorkOrderOption[]
-  photos     WorkOrderPhoto[]
-  edits      WorkOrderEdit[]
+  installers   WorkOrderInstaller[]
+  options      WorkOrderOption[]
+  deviceModels WorkOrderDeviceModel[]
+  photos       WorkOrderPhoto[]
+  edits        WorkOrderEdit[]
 
   @@index([orderDate])
   @@index([clientId])
@@ -172,6 +182,17 @@ model WorkOrderOption {
 
   @@unique([workOrderId, optionType])
   @@map("work_order_options")
+}
+
+model WorkOrderDeviceModel {
+  id          String      @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder   @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  deviceModel DeviceModel
+  comment     String?
+
+  @@unique([workOrderId, deviceModel])
+  @@map("work_order_device_models")
 }
 
 model WorkOrderPhoto {
