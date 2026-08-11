@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
 import { ColumnPicker, type ColumnDef } from "./column-picker";
+import { AdminExportButton } from "./admin-export-button";
 
 const TYPE_LABELS: Record<string, string> = {
   MONTAZA: "Montaža",
@@ -170,13 +171,7 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
               >
                 Izvozi vse
               </a>
-              <a
-                href="/api/nalogi/export-admin"
-                title="Nalogi, narejeni prejšnji dan, v posebni obliki za administracijo"
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                Izvoz admin
-              </a>
+              <AdminExportButton />
             </>
           )}
         </div>

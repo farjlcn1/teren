@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
@@ -51,12 +51,23 @@ function installerLabel(name: string, otherText: string | null) {
 
 // Posebna postavitev stolpcev za administrativni izvoz — vrstni red po dogovoru, ne po istem
 // vzorcu kot navaden izvoz (glej /api/nalogi/export). Stolpci E, N, O, P so namenoma prazni.
-export async function GET() {
+// Brez ?from=&to= (npr. star zaznamek) privzeto zajame prejšnji dan.
+export async function GET(request: NextRequest) {
   const user = await requirePermission("canExportData");
 
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  const to = new Date(from.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const fromParam = request.nextUrl.searchParams.get("from");
+  const toParam = request.nextUrl.searchParams.get("to");
+
+  let from: Date;
+  let to: Date;
+  if (fromParam && toParam) {
+    from = new Date(`${fromParam}T00:00:00`);
+    to = new Date(`${toParam}T23:59:59`);
+  } else {
+    const now = new Date();
+    from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    to = new Date(from.getTime() + 24 * 60 * 60 * 1000 - 1);
+  }
 
   const orders = await prisma.workOrder.findMany({
     where: { orderDate: { gte: from, lte: to }, ...(user.canViewAllOrders ? {} : { createdById: user.id }) },
@@ -136,12 +147,14 @@ export async function GET() {
   sheet.getRow(1).font = { bold: true };
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const dateStr = from.toISOString().slice(0, 10);
+  const fromStr = from.toISOString().slice(0, 10);
+  const toStr = to.toISOString().slice(0, 10);
+  const fileDateStr = fromStr === toStr ? fromStr : `${fromStr}_${toStr}`;
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="nalogi-admin-${dateStr}.xlsx"`,
+      "Content-Disposition": `attachment; filename="nalogi-admin-${fileDateStr}.xlsx"`,
     },
   });
 }
