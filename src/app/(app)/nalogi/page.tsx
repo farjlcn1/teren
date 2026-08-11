@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
+import { ColumnPicker, type ColumnDef } from "./column-picker";
 
 const TYPE_LABELS: Record<string, string> = {
   MONTAZA: "Montaža",
@@ -9,6 +10,16 @@ const TYPE_LABELS: Record<string, string> = {
   INTERVENCIJA: "Intervencija",
   PREMONTAZA: "Premontaža",
   OSTALO: "Ostalo",
+};
+
+const DIFFICULTY_LABELS: Record<string, string> = {
+  OSNOVNA: "Osnovna",
+  ZAHTEVNA: "Zahtevna",
+};
+
+const CULPRIT_LABELS: Record<string, string> = {
+  SLEDENJE: "Sledenje",
+  STRANKA: "Stranka",
 };
 
 const INSTALLERS = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"];
@@ -49,27 +60,85 @@ const DEVICE_MODEL_LABELS: Record<string, string> = {
   OSTALO: "Drugo",
 };
 
-const SORT_OPTIONS = [
-  { value: "orderDate", label: "Datum" },
-  { value: "ident", label: "Ident" },
-  { value: "vehiclePlate", label: "Registrska" },
-  { value: "imei", label: "IMEI" },
-  { value: "client", label: "Stranka" },
-  { value: "type", label: "Tip" },
+function installerLabel(name: string, otherText: string | null) {
+  return name === "OSTALO" ? otherText || "Drugo" : name.charAt(0) + name.slice(1).toLowerCase();
+}
+
+// Stolpci, ki jih lahko izbereš prek "Izberi stolpce" — ujemajo se z parametri, po katerih lahko
+// tudi filtriraš. Ident je vedno prikazan (povezava na nalog), zato ni v tem seznamu.
+const COLUMN_DEFS: ColumnDef[] = [
+  { key: "datum", label: "Datum" },
+  { key: "tip", label: "Tip" },
+  { key: "stranka", label: "Stranka" },
+  { key: "registrska", label: "Registrska" },
+  { key: "imei", label: "IMEI" },
+  { key: "zahtevnost", label: "Zahtevnost" },
+  { key: "krivec", label: "Krivec" },
+  { key: "monter", label: "Monter" },
+  { key: "opcije", label: "DIN/ANI/CAN" },
+  { key: "naprava", label: "Model naprave" },
 ];
+
+const DEFAULT_COLUMNS = ["datum", "tip", "stranka", "registrska", "imei"];
+
+// Skalarna polja na WorkOrder se da smiselno urediti z enim ORDER BY — relacije ena-proti-več
+// (monter, opcije, naprava) ne, zato za te tri glava stolpca ni klikljiva.
+const SORT_KEY_MAP: Record<string, string> = {
+  datum: "orderDate",
+  tip: "type",
+  stranka: "client",
+  registrska: "vehiclePlate",
+  imei: "imei",
+  zahtevnost: "difficulty",
+  krivec: "culprit",
+};
+
+type PageSearchParams = WorkOrderFilters & { cols?: string };
 
 function selectClass() {
   return "mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100";
 }
 
-export default async function NalogiPage({ searchParams }: { searchParams: Promise<WorkOrderFilters> }) {
+function sortHref(sortKey: string, filters: PageSearchParams): string {
+  const currentSort = filters.sort ?? "orderDate";
+  const currentDir = filters.dir ?? "desc";
+  const nextDir = currentSort === sortKey && currentDir === "asc" ? "desc" : "asc";
+
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][]);
+  params.set("sort", sortKey);
+  params.set("dir", nextDir);
+  return `?${params.toString()}`;
+}
+
+function sortIndicator(sortKey: string, filters: PageSearchParams): string {
+  const currentSort = filters.sort ?? "orderDate";
+  const currentDir = filters.dir ?? "desc";
+  if (currentSort !== sortKey) return "";
+  return currentDir === "asc" ? " ▲" : " ▼";
+}
+
+function ThHeader({ label, sortKey, filters }: { label: string; sortKey?: string; filters: PageSearchParams }) {
+  const thClass = "px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400";
+  if (!sortKey) return <th className={thClass}>{label}</th>;
+  return (
+    <th className={thClass}>
+      <Link href={sortHref(sortKey, filters)} className="hover:text-gray-700 dark:hover:text-gray-200">
+        {label}
+        {sortIndicator(sortKey, filters)}
+      </Link>
+    </th>
+  );
+}
+
+export default async function NalogiPage({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
   const user = await requireUser();
   const filters = await searchParams;
+  const activeCols = filters.cols?.split(",").filter(Boolean) ?? DEFAULT_COLUMNS;
 
   const [orders, clients] = await Promise.all([
     prisma.workOrder.findMany({
       ...buildWorkOrderQuery(filters, user),
-      include: { client: true },
+      include: { client: true, installers: true, options: true, deviceModels: true },
       take: 500,
     }),
     prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -85,22 +154,25 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {user.canViewAllOrders ? "Vsi delovni nalogi" : "Moji delovni nalogi"}
         </h1>
-        {user.canExportData && (
-          <div className="flex gap-2">
-            <a
-              href={`/api/nalogi/export${queryString ? `?${queryString}` : ""}`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Izvozi v Excel (filtrirano)
-            </a>
-            <a
-              href="/api/nalogi/export"
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Izvozi vse
-            </a>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <ColumnPicker columns={COLUMN_DEFS} defaultColumns={DEFAULT_COLUMNS} />
+          {user.canExportData && (
+            <>
+              <a
+                href={`/api/nalogi/export${queryString ? `?${queryString}` : ""}`}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Izvozi v Excel (filtrirano)
+              </a>
+              <a
+                href="/api/nalogi/export"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Izvozi vse
+              </a>
+            </>
+          )}
+        </div>
       </div>
 
       {user.canViewAllOrders && (
@@ -195,23 +267,6 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
               ))}
             </select>
           </label>
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            Razvrsti po
-            <select name="sort" defaultValue={filters.sort ?? "orderDate"} className={selectClass()}>
-              {SORT_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            Smer
-            <select name="dir" defaultValue={filters.dir ?? "desc"} className={selectClass()}>
-              <option value="desc">padajoče</option>
-              <option value="asc">naraščajoče</option>
-            </select>
-          </label>
           <div className="col-span-2 flex items-end gap-2 sm:col-span-4">
             <button type="submit" className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white">
               Filtriraj
@@ -227,12 +282,10 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
         <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Ident</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Datum</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Tip</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Stranka</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Registrska</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">IMEI</th>
+              <ThHeader label="Ident" sortKey="ident" filters={filters} />
+              {COLUMN_DEFS.filter((c) => activeCols.includes(c.key)).map((c) => (
+                <ThHeader key={c.key} label={c.label} sortKey={SORT_KEY_MAP[c.key]} filters={filters} />
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -243,16 +296,57 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
                     {o.ident}
                   </Link>
                 </td>
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.orderDate.toLocaleDateString("sl-SI")}</td>
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{TYPE_LABELS[o.type]}</td>
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.client.name}</td>
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.vehiclePlate}</td>
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.imei}</td>
+                {activeCols.includes("datum") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {o.orderDate.toLocaleDateString("sl-SI")}
+                  </td>
+                )}
+                {activeCols.includes("tip") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{TYPE_LABELS[o.type]}</td>
+                )}
+                {activeCols.includes("stranka") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.client.name}</td>
+                )}
+                {activeCols.includes("registrska") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.vehiclePlate}</td>
+                )}
+                {activeCols.includes("imei") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{o.imei}</td>
+                )}
+                {activeCols.includes("zahtevnost") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {DIFFICULTY_LABELS[o.difficulty]}
+                  </td>
+                )}
+                {activeCols.includes("krivec") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {o.culprit ? CULPRIT_LABELS[o.culprit] ?? o.culprit : "—"}
+                  </td>
+                )}
+                {activeCols.includes("monter") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {o.installers.map((i) => installerLabel(i.name, i.otherText)).join(", ") || "—"}
+                  </td>
+                )}
+                {activeCols.includes("opcije") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {o.options.map((opt) => OPTION_LABELS[opt.optionType] ?? opt.optionType).join(", ") || "—"}
+                  </td>
+                )}
+                {activeCols.includes("naprava") && (
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {o.deviceModels.map((dm) => DEVICE_MODEL_LABELS[dm.deviceModel] ?? dm.deviceModel).join(", ") ||
+                      "—"}
+                  </td>
+                )}
               </tr>
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-gray-400 dark:text-gray-500">
+                <td
+                  colSpan={activeCols.length + 1}
+                  className="px-4 py-6 text-center text-gray-400 dark:text-gray-500"
+                >
                   Ni nalogov.
                 </td>
               </tr>

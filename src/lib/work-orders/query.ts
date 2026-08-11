@@ -27,6 +27,8 @@ const SORT_FIELD_MAP: Record<string, (dir: SortDir) => Prisma.WorkOrderOrderByWi
   imei: (dir) => ({ imei: dir }),
   client: (dir) => ({ client: { name: dir } }),
   type: (dir) => ({ type: dir }),
+  difficulty: (dir) => ({ difficulty: dir }),
+  culprit: (dir) => ({ culprit: dir }),
 };
 
 export function buildWorkOrderQuery(
