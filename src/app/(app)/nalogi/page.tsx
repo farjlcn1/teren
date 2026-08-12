@@ -136,14 +136,17 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
   const filters = await searchParams;
   const activeCols = filters.cols?.split(",").filter(Boolean) ?? DEFAULT_COLUMNS;
 
-  const [orders, clients] = await Promise.all([
+  const [orders, clients, vehicles, imeiRows] = await Promise.all([
     prisma.workOrder.findMany({
       ...buildWorkOrderQuery(filters, user),
       include: { client: true, installers: true, options: true, deviceModels: true },
       take: 500,
     }),
     prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
+    prisma.workOrder.findMany({ distinct: ["imei"], orderBy: { imei: "asc" }, select: { imei: true } }),
   ]);
+  const imeis = imeiRows.map((r) => r.imei);
 
   const queryString = new URLSearchParams(
     Object.entries(filters).filter(([, v]) => v) as [string, string][]
@@ -203,11 +206,25 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
           </label>
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
             Registrska
-            <input name="vehiclePlate" defaultValue={filters.vehiclePlate} className={selectClass()} />
+            <select name="vehiclePlate" defaultValue={filters.vehiclePlate ?? ""} className={selectClass()}>
+              <option value="">vse</option>
+              {vehicles.map((v) => (
+                <option key={v.plate} value={v.plate}>
+                  {v.plate}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
             IMEI
-            <input name="imei" defaultValue={filters.imei} className={selectClass()} />
+            <select name="imei" defaultValue={filters.imei ?? ""} className={selectClass()}>
+              <option value="">vsi</option>
+              {imeis.map((imei) => (
+                <option key={imei} value={imei}>
+                  {imei}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
             Tip

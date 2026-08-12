@@ -24,6 +24,12 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* Chrome renders the native date-input calendar icon with a fixed dark SVG that's
+   invisible on a dark background unless color-scheme tells it to use light icons. */
+.dark input[type="date"] {
+  color-scheme: dark;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

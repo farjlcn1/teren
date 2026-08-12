@@ -200,6 +200,7 @@ model WorkOrderPhoto {
   workOrderId String
   workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   filePath    String
+  takenAt     DateTime? // iz EXIF DateTimeOriginal, če ga slika vsebuje
   uploadedAt  DateTime  @default(now())
 
   @@map("work_order_photos")

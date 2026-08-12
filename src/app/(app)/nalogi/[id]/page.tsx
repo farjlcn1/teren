@@ -91,7 +91,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
         <dt className="text-gray-500 dark:text-gray-400">Datum</dt>
-        <dd className="text-gray-900 dark:text-gray-100">{order.orderDate.toLocaleDateString("sl-SI")}</dd>
+        <dd className="text-gray-900 dark:text-gray-100">{order.orderDate.toLocaleString("sl-SI")}</dd>
 
         <dt className="text-gray-500 dark:text-gray-400">Tip</dt>
         <dd className="text-gray-900 dark:text-gray-100">{TYPE_LABELS[order.type]}</dd>
@@ -190,14 +190,19 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           <h2 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Slike</h2>
           <div className="grid grid-cols-3 gap-2">
             {order.photos.map((p) => (
-              <ImageLightbox key={p.id} src={`/api/uploads/${p.filePath}`} alt="">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/uploads/${p.filePath}`}
-                  alt=""
-                  className="h-24 w-full rounded-md object-cover transition hover:opacity-80"
-                />
-              </ImageLightbox>
+              <div key={p.id} className="space-y-1">
+                <ImageLightbox src={`/api/uploads/${p.filePath}`} alt="">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/uploads/${p.filePath}`}
+                    alt=""
+                    className="h-24 w-full rounded-md object-cover transition hover:opacity-80"
+                  />
+                </ImageLightbox>
+                <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+                  {(p.takenAt ?? p.uploadedAt).toLocaleString("sl-SI")}
+                </p>
+              </div>
             ))}
           </div>
         </div>

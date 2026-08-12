@@ -2,6 +2,7 @@ import "server-only";
 import { mkdir, writeFile, readFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
+import exifr from "exifr";
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "./uploads";
 
@@ -15,11 +16,28 @@ async function ensureWorkOrderDir(workOrderId: string) {
   return dir;
 }
 
+// EXIF se prebere iz izvirnega buffera, ker ga sharp ob stiskanju ne ohrani (brez .withMetadata()).
+async function readTakenAt(buffer: Buffer): Promise<Date | null> {
+  try {
+    const exif = await exifr.parse(buffer, ["DateTimeOriginal", "CreateDate"]);
+    const date = exif?.DateTimeOriginal ?? exif?.CreateDate;
+    return date instanceof Date ? date : null;
+  } catch {
+    return null;
+  }
+}
+
 // Vrne relativno pot (shrani se v bazo), slika se stisne in omeji na max širino 1920px.
-export async function savePhoto(workOrderId: string, file: File, index: number): Promise<string> {
+export async function savePhoto(
+  workOrderId: string,
+  file: File,
+  index: number
+): Promise<{ filePath: string; takenAt: Date | null }> {
   const dir = await ensureWorkOrderDir(workOrderId);
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = `photo-${index + 1}.jpg`;
+
+  const takenAt = await readTakenAt(buffer);
 
   const resized = await sharp(buffer)
     .rotate()
@@ -28,7 +46,7 @@ export async function savePhoto(workOrderId: string, file: File, index: number):
     .toBuffer();
 
   await writeFile(path.join(dir, filename), resized);
-  return path.join("work-orders", workOrderId, filename);
+  return { filePath: path.join("work-orders", workOrderId, filename), takenAt };
 }
 
 export async function saveSignature(workOrderId: string, file: File): Promise<string> {

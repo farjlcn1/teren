@@ -162,14 +162,14 @@ export async function createWorkOrder(
   await ensureVehicleExists(data.vehiclePlate);
 
   const signaturePath = signature ? await saveSignature(workOrder.id, signature) : null;
-  const photoPaths = await Promise.all(photos.map((file, i) => savePhoto(workOrder.id, file, i)));
+  const savedPhotos = await Promise.all(photos.map((file, i) => savePhoto(workOrder.id, file, i)));
 
   const now = new Date();
   await prisma.workOrder.update({
     where: { id: workOrder.id },
     data: {
       ...(signaturePath ? { signatureUrl: signaturePath, signedAt: now, lockedAt: now } : {}),
-      photos: { create: photoPaths.map((filePath) => ({ filePath })) },
+      photos: { create: savedPhotos.map((p) => ({ filePath: p.filePath, takenAt: p.takenAt })) },
     },
   });
 
