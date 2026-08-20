@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
+import { checkLoginRateLimit, recordLoginFailure, recordLoginSuccess } from "@/lib/auth/rate-limit";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -24,20 +25,29 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
 
   const rememberMe = formData.get("rememberMe") === "on";
   const redirectTo = formData.get("redirectTo");
+  const email = parsed.data.email.toLowerCase();
+
+  const rateLimit = checkLoginRateLimit(email);
+  if (rateLimit.blocked) {
+    return { error: rateLimit.message };
+  }
 
   const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email.toLowerCase() },
+    where: { email },
   });
 
   if (!user || !user.isActive) {
+    recordLoginFailure(email);
     return { error: "Napačen email ali geslo." };
   }
 
   const valid = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!valid) {
+    recordLoginFailure(email);
     return { error: "Napačen email ali geslo." };
   }
 
+  recordLoginSuccess(email);
   await createSession(user.id, rememberMe);
   redirect(typeof redirectTo === "string" && redirectTo ? redirectTo : "/");
 }
