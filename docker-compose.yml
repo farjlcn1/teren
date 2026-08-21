@@ -29,6 +29,9 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - /home/matija/teren-data/uploads:/app/uploads
+    # host.docker.internal -> gostiteljev Postfix (glej sled/deploy/mail-relay/), za SMTP_HOST v .env.production.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

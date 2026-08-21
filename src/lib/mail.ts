@@ -5,14 +5,16 @@ import { prisma } from "@/lib/db";
 
 function getTransport() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD } = process.env;
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD) {
-    throw new Error("SMTP ni nastavljen (SMTP_HOST/SMTP_USER/SMTP_PASSWORD v .env).");
+  if (!SMTP_HOST) {
+    throw new Error("SMTP ni nastavljen (SMTP_HOST v .env).");
   }
   return nodemailer.createTransport({
     host: SMTP_HOST,
     port: Number(SMTP_PORT || 587),
     secure: Number(SMTP_PORT || 587) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
+    // Lasten rele (glej sled/deploy/mail-relay/) zaupa po IP-ju (mynetworks), ne po SASL prijavi
+    // -- SMTP_USER ostane prazen, zato tu auth ni potreben (enak vzorec kot sled/lib/mail.ts).
+    auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASSWORD } : undefined,
   });
 }
 
