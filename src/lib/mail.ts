@@ -15,6 +15,11 @@ function getTransport() {
     // Lasten rele (glej sled/deploy/mail-relay/) zaupa po IP-ju (mynetworks), ne po SASL prijavi
     // -- SMTP_USER ostane prazen, zato tu auth ni potreben (enak vzorec kot sled/lib/mail.ts).
     auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASSWORD } : undefined,
+    // Rele uporablja samo-podpisan certifikat (glej sled/deploy/mail-relay/) -- v redu je, ker je
+    // ta povezava zaupana po omrežni poti (Docker bridge, ne internet), ne po identiteti
+    // certifikata. Node privzeto (tudi pri opportunistic STARTTLS) zavrne samo-podpisan
+    // certifikat, zato tu preverjanje verige izklopimo samo za TA lokalni rele.
+    tls: { rejectUnauthorized: false },
   });
 }
 
