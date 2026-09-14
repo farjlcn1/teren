@@ -67,6 +67,21 @@ export async function updateUserPermissions(userId: string, formData: FormData):
   redirect("/admin/uporabniki");
 }
 
+// Vrne ActionState namesto da bi napako vrgel: vržene napake iz server akcij se v produkciji
+// pošljejo klientu samo kot splošno "An error occurred..." sporočilo (React/Next.js privzeto
+// odstrani dejansko sporočilo iz vsakega vrženega Errorja pri prenosu prek RSC) -- ostale akcije
+// v tej datoteki (createUser, resetUserPassword) iz istega razloga tudi vračajo, ne mečejo.
+export async function deleteUser(id: string): Promise<ActionState> {
+  await requirePermission("canManageUsers");
+
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch {
+    return { error: "Uporabnika ni mogoče izbrisati." };
+  }
+  revalidatePath("/admin/uporabniki");
+}
+
 const passwordResetSchema = z.object({ password: passwordSchema });
 
 export async function resetUserPassword(userId: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {

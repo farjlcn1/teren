@@ -2,9 +2,10 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { AddUserForm } from "./add-user-form";
+import { DeleteUserButton } from "./delete-user-button";
 
 export default async function UporabnikiPage() {
-  await requirePermission("canManageUsers");
+  const currentUser = await requirePermission("canManageUsers");
 
   const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
 
@@ -53,12 +54,15 @@ export default async function UporabnikiPage() {
                   </td>
                   <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{perms.join(", ") || "—"}</td>
                   <td className="px-4 py-2 text-right">
-                    <Link
-                      href={`/admin/uporabniki/${u.id}/edit`}
-                      className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                      Uredi
-                    </Link>
+                    <div className="flex justify-end gap-3">
+                      <Link
+                        href={`/admin/uporabniki/${u.id}/edit`}
+                        className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        Uredi
+                      </Link>
+                      {currentUser.canManageUsers && <DeleteUserButton id={u.id} />}
+                    </div>
                   </td>
                 </tr>
               );
