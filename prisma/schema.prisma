@@ -89,12 +89,14 @@ model User {
   canEditOrders    Boolean @default(false)
   canManageClients Boolean @default(false)
   canManageVehicles Boolean @default(false)
+  canManagePlan     Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   createdWorkOrders WorkOrder[]     @relation("CreatedBy")
   workOrderEdits    WorkOrderEdit[]
+  createdPlanGroups PlanGroup[]
 
   @@map("users")
 }
@@ -111,6 +113,7 @@ model Client {
   updatedAt DateTime @updatedAt
 
   workOrders WorkOrder[]
+  planGroups PlanGroup[]
 
   @@map("clients")
 }
@@ -155,6 +158,7 @@ model WorkOrder {
   deviceModels WorkOrderDeviceModel[]
   photos       WorkOrderPhoto[]
   edits        WorkOrderEdit[]
+  plannedTask  PlannedTask?
 
   @@index([orderDate])
   @@index([clientId])
@@ -255,4 +259,44 @@ model VehicleSyncConfig {
   lastSyncStatus String?
 
   @@map("vehicle_sync_config")
+}
+
+model PlanGroup {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  startAt     DateTime
+  endAt       DateTime
+  note        String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks PlannedTask[]
+
+  @@index([startAt])
+  @@index([clientId])
+  @@map("plan_groups")
+}
+
+model PlannedTask {
+  id          String    @id @default(cuid())
+  planGroupId String
+  planGroup   PlanGroup @relation(fields: [planGroupId], references: [id], onDelete: Cascade)
+
+  vehiclePlate               String
+  note                       String?
+  expectedInstaller          InstallerName?
+  expectedInstallerOtherText String?
+
+  workOrderId String?    @unique
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planGroupId])
+  @@map("planned_tasks")
 }

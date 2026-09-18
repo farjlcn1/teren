@@ -7,6 +7,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
 
   const links = [
+    { href: "/plan", label: "Plan", show: true },
     { href: "/nalogi/nov", label: "Nov nalog", show: true },
     { href: "/nalogi", label: "Nalogi", show: true },
     { href: "/admin/stranke", label: "Stranke", show: user.canManageClients },

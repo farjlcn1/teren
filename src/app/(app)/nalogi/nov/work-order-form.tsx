@@ -67,18 +67,34 @@ function checkboxClass() {
   return "h-5 w-5 shrink-0 sm:h-4 sm:w-4";
 }
 
-export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; vehiclePlates: string[] }) {
+export function WorkOrderForm({
+  clients,
+  vehiclePlates,
+  plannedTaskId,
+  initialClientId,
+  lockedClientName,
+  initialVehiclePlate,
+  initialComment,
+}: {
+  clients: Client[];
+  vehiclePlates: string[];
+  plannedTaskId?: string;
+  initialClientId?: string;
+  lockedClientName?: string;
+  initialVehiclePlate?: string;
+  initialComment?: string;
+}) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const [type, setType] = useState("MONTAZA");
   const [difficulty, setDifficulty] = useState("OSNOVNA");
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(initialClientId ?? "");
 
   const [installers, setInstallers] = useState<Record<string, boolean>>({});
   const [installerOtherText, setInstallerOtherText] = useState("");
 
-  const [vehiclePlate, setVehiclePlate] = useState("");
+  const [vehiclePlate, setVehiclePlate] = useState(initialVehiclePlate ?? "");
   const [vehicleBrand, setVehicleBrand] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleYear, setVehicleYear] = useState("");
@@ -104,7 +120,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
 
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(initialComment ?? "");
 
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -193,6 +209,7 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
     fd.set("installers", JSON.stringify(selectedInstallers));
     fd.set("options", JSON.stringify(selectedOptions));
     fd.set("deviceModels", JSON.stringify(selectedDeviceModels));
+    if (plannedTaskId) fd.set("plannedTaskId", plannedTaskId);
     if (signatureBlob) fd.set("signature", signatureBlob, "signature.png");
     photos.forEach((file) => fd.append("photos", file));
 
@@ -233,7 +250,13 @@ export function WorkOrderForm({ clients, vehiclePlates }: { clients: Client[]; v
 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Stranka</label>
-        <ClientCombobox clients={clients} value={clientId} onChange={setClientId} required />
+        {plannedTaskId ? (
+          <div className="mt-1 rounded-md border border-gray-300 bg-gray-50 px-3 py-2.5 text-base text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 sm:py-2 sm:text-sm">
+            {lockedClientName}
+          </div>
+        ) : (
+          <ClientCombobox clients={clients} value={clientId} onChange={setClientId} required />
+        )}
       </div>
 
       <fieldset>

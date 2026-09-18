@@ -25,6 +25,7 @@ export type CurrentUser = {
   canEditOrders: boolean;
   canManageClients: boolean;
   canManageVehicles: boolean;
+  canManagePlan: boolean;
 };
 
 export async function createSession(userId: string, rememberMe: boolean) {
@@ -82,6 +83,7 @@ export async function getSession(): Promise<CurrentUser | null> {
     canEditOrders: user.canEditOrders,
     canManageClients: user.canManageClients,
     canManageVehicles: user.canManageVehicles,
+    canManagePlan: user.canManagePlan,
   };
 }
 

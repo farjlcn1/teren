@@ -6,6 +6,7 @@ const PERMISSION_FIELDS = [
   { key: "canManageUsers", label: "Upravljanje uporabnikov" },
   { key: "canManageClients", label: "Upravljanje strank" },
   { key: "canManageVehicles", label: "Upravljanje registrskih št." },
+  { key: "canManagePlan", label: "Upravljanje plana" },
   { key: "canViewAllOrders", label: "Pregled vseh nalogov" },
   { key: "canEditOrders", label: "Urejanje nalogov" },
   { key: "canExportData", label: "Izvoz podatkov" },

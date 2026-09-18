@@ -53,6 +53,7 @@ const permissionKeys = [
   "canEditOrders",
   "canManageClients",
   "canManageVehicles",
+  "canManagePlan",
 ] as const;
 
 export async function updateUserPermissions(userId: string, formData: FormData): Promise<void> {

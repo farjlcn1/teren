@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { generateIdent } from "@/lib/work-orders/ident";
@@ -172,6 +173,18 @@ export async function createWorkOrder(
       photos: { create: savedPhotos.map((p) => ({ filePath: p.filePath, takenAt: p.takenAt })) },
     },
   });
+
+  const plannedTaskId = formData.get("plannedTaskId");
+  if (typeof plannedTaskId === "string" && plannedTaskId) {
+    // updateMany namesto findUnique+update: če je nalog med tem že prevzel kdo drug, izbrisan, ali
+    // se stranka ne ujema (poskus prirejanja skritega polja), preprosto ne ujame nobene vrstice --
+    // nikoli ne zavrne ali izgubi naloga, ki ga je monter pravkar ustvaril s sliko in podpisom.
+    await prisma.plannedTask.updateMany({
+      where: { id: plannedTaskId, workOrderId: null, planGroup: { clientId: data.clientId } },
+      data: { workOrderId: workOrder.id },
+    });
+    revalidatePath("/plan");
+  }
 
   redirect(`/nalogi/${workOrder.id}`);
 }
