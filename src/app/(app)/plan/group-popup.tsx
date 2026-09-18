@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, useActionState } from "react";
 import Link from "next/link";
 import { ClientCombobox } from "@/components/client-combobox";
 import { PlateCombobox } from "@/components/plate-combobox";
+import { DateTimeInput } from "@/components/date-input";
 import { updatePlanGroup, deletePlanGroup, addPlannedTask, deletePlannedTask } from "./actions";
 import { isoToLocalDateTimeStr, localDateTimeToIso, type PlanGroupItem } from "./plan-calendar";
 
@@ -126,22 +127,20 @@ export function GroupPopup({
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Od
-                <input
-                  type="datetime-local"
+                <DateTimeInput
+                  withTime
                   required
                   defaultValue={isoToLocalDateTimeStr(group.startAt)}
-                  onChange={(e) => setEditStartAtIso(localDateTimeToIso(e.target.value))}
-                  className={fieldClass()}
+                  onValueChange={(v) => setEditStartAtIso(localDateTimeToIso(v))}
                 />
               </label>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Do
-                <input
-                  type="datetime-local"
+                <DateTimeInput
+                  withTime
                   required
                   defaultValue={isoToLocalDateTimeStr(group.endAt)}
-                  onChange={(e) => setEditEndAtIso(localDateTimeToIso(e.target.value))}
-                  className={fieldClass()}
+                  onValueChange={(v) => setEditEndAtIso(localDateTimeToIso(v))}
                 />
               </label>
             </div>

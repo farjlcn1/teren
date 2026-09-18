@@ -8,7 +8,7 @@ import type { InstallerName } from "@/generated/prisma/client";
 
 const INSTALLER_NAMES = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"] as const;
 
-export type PlanActionState = { error?: string; success?: boolean } | undefined;
+export type PlanActionState = { error?: string; success?: boolean; groupId?: string } | undefined;
 
 const planGroupSchema = z.object({
   clientId: z.string().min(1, "Izberi stranko."),
@@ -46,7 +46,7 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
   const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
   if (!client) return { error: "Stranka ne obstaja." };
 
-  await prisma.planGroup.create({
+  const group = await prisma.planGroup.create({
     data: {
       clientId: client.id,
       startAt,
@@ -57,7 +57,7 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
   });
 
   revalidatePath("/plan");
-  return { success: true };
+  return { success: true, groupId: group.id };
 }
 
 export async function updatePlanGroup(

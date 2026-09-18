@@ -3,6 +3,7 @@
 import { useEffect, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DateTimeInput } from "@/components/date-input";
 import { createPlanGroup } from "./actions";
 import { GroupPopup } from "./group-popup";
 
@@ -124,6 +125,8 @@ export function PlanCalendar({
   });
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalKey, setModalKey] = useState(0);
+  const [modalStartDefault, setModalStartDefault] = useState("");
   const [clientId, setClientId] = useState("");
   const [startAtIso, setStartAtIso] = useState("");
   const [endAtIso, setEndAtIso] = useState("");
@@ -137,14 +140,43 @@ export function PlanCalendar({
   useEffect(() => {
     if (state?.success) {
       setModalOpen(false);
-      setClientId("");
-      setStartAtIso("");
-      setEndAtIso("");
+      // Takoj odpri ravno ustvarjeno skupino, da je dodajanje nalogov mogoče brez dodatnega klika
+      // na koledarju.
+      if (state.groupId) setSelectedGroupId(state.groupId);
     }
   }, [state]);
 
   function groupColor(clientId: string) {
     return PALETTE[hashToIndex(clientId, PALETTE.length)];
+  }
+
+  // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času -- prazen niz za ročni vnos (gumb "Nov
+  // dogodek"), sicer predizpolnjen iz kliknjenega kvadratka v koledarju.
+  function openCreateModal(startDefault: string = "") {
+    setClientId("");
+    setModalStartDefault(startDefault);
+    setStartAtIso(startDefault ? localDateTimeToIso(startDefault) : "");
+    setEndAtIso("");
+    setModalKey((k) => k + 1);
+    setModalOpen(true);
+  }
+
+  // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika (zaokroženo na 30
+  // min) in odpre ustvarjalni obrazec z že izpolnjenim začetkom; konec ostane za ročni vnos.
+  function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
+    if (!canManagePlan) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const totalMinutes = Math.max(0, Math.min(23 * 60 + 30, Math.round(((offsetY / PX_PER_HOUR) * 60) / 30) * 30));
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    const day = days[dayIdx];
+    const y = day.getFullYear();
+    const m = String(day.getMonth() + 1).padStart(2, "0");
+    const d = String(day.getDate()).padStart(2, "0");
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`);
   }
 
   function goToWeek(offsetDays: number) {
@@ -194,12 +226,7 @@ export function PlanCalendar({
         {canManagePlan && (
           <button
             type="button"
-            onClick={() => {
-              setClientId("");
-              setStartAtIso("");
-              setEndAtIso("");
-              setModalOpen(true);
-            }}
+            onClick={() => openCreateModal()}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
           >
             Nov dogodek
@@ -242,7 +269,11 @@ export function PlanCalendar({
               );
               const positioned = packGroupsForDay(dayGroups);
               return (
-                <div key={dayIdx} className="relative border-l border-gray-100 dark:border-gray-800">
+                <div
+                  key={dayIdx}
+                  onClick={(e) => handleDayColumnClick(e, dayIdx)}
+                  className={`relative border-l border-gray-100 dark:border-gray-800 ${canManagePlan ? "cursor-pointer" : ""}`}
+                >
                   {HOURS.map((h) => (
                     <div
                       key={h}
@@ -261,7 +292,10 @@ export function PlanCalendar({
                       <button
                         key={g.id}
                         type="button"
-                        onClick={() => setSelectedGroupId(g.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedGroupId(g.id);
+                        }}
                         className="absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm"
                         style={{
                           top: topHours * PX_PER_HOUR,
@@ -318,20 +352,21 @@ export function PlanCalendar({
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Od
-                <input
-                  type="datetime-local"
+                <DateTimeInput
+                  key={`start-${modalKey}`}
+                  withTime
                   required
-                  onChange={(e) => setStartAtIso(localDateTimeToIso(e.target.value))}
-                  className={fieldClass()}
+                  defaultValue={modalStartDefault}
+                  onValueChange={(v) => setStartAtIso(localDateTimeToIso(v))}
                 />
               </label>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Do
-                <input
-                  type="datetime-local"
+                <DateTimeInput
+                  key={`end-${modalKey}`}
+                  withTime
                   required
-                  onChange={(e) => setEndAtIso(localDateTimeToIso(e.target.value))}
-                  className={fieldClass()}
+                  onValueChange={(v) => setEndAtIso(localDateTimeToIso(v))}
                 />
               </label>
             </div>
