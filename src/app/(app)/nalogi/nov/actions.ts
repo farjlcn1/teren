@@ -183,8 +183,31 @@ export async function createWorkOrder(
       where: { id: plannedTaskId, workOrderId: null, planGroup: { clientId: data.clientId } },
       data: { workOrderId: workOrder.id },
     });
-    revalidatePath("/plan");
+  } else {
+    // Nalog ni nastal iz obstoječega plana (monter ga je ustvaril neposredno) -- da tudi tako delo
+    // pristane na zavihku Plan, samodejno ustvari dogodek in nalog znotraj njega, že označen kot
+    // opravljen (workOrderId je nastavljen takoj), saj je delo v resnici že opravljeno.
+    const primaryInstaller = data.installers[0];
+    await prisma.planGroup.create({
+      data: {
+        clientId: data.clientId,
+        startAt: orderDate,
+        endAt: orderDate,
+        expectedInstaller: primaryInstaller.name,
+        expectedInstallerOtherText: primaryInstaller.name === "OSTALO" ? primaryInstaller.otherText || null : null,
+        createdById: user.id,
+        tasks: {
+          create: {
+            vehiclePlate: data.vehiclePlate,
+            type: data.type,
+            note: data.comment || null,
+            workOrderId: workOrder.id,
+          },
+        },
+      },
+    });
   }
+  revalidatePath("/plan");
 
   redirect(`/nalogi/${workOrder.id}`);
 }
