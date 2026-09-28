@@ -12,7 +12,7 @@ const PALETTE = [
   "#4338ca", "#0891b2", "#e11d48", "#65a30d", "#c026d3",
 ];
 const DAY_LABELS = ["Pon", "Tor", "Sre", "Čet", "Pet", "Sob", "Ned"];
-const PX_PER_HOUR = 40;
+const PX_PER_HOUR = 80;
 // Urnik prikazuje samo 6h-18h (najpogostejši delovni čas) -- manj praznega prostora za skrolanje.
 // Dogodek izven tega okna se ne izgubi (dnevno članstvo spodaj še vedno šteje cel dan), le vizualno
 // se obreže na rob vidnega okna.
@@ -293,8 +293,8 @@ export function PlanCalendar({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
-        <div className="grid grid-cols-[56px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+      <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+        <div className="grid grid-cols-[112px_repeat(7,304px)] border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
           <div />
           {days.map((d, i) => (
             <div
@@ -306,7 +306,7 @@ export function PlanCalendar({
           ))}
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
-          <div className="relative grid grid-cols-[56px_repeat(7,1fr)]" style={{ height: HOURS.length * PX_PER_HOUR }}>
+          <div className="relative grid grid-cols-[112px_repeat(7,304px)]" style={{ height: HOURS.length * PX_PER_HOUR }}>
             <div className="relative">
               {HOURS.map((h) => (
                 <div
