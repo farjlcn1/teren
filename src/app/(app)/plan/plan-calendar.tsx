@@ -56,12 +56,29 @@ function fieldClass() {
   return "mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100";
 }
 
+export const INSTALLERS = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"];
+
+export function installerLabel(name: string) {
+  return name === "OSTALO" ? "Ostalo" : name.charAt(0) + name.slice(1).toLowerCase();
+}
+
+export const TASK_TYPES = [
+  { value: "MONTAZA", label: "Montaža" },
+  { value: "DEMONTAZA", label: "Demontaža" },
+  { value: "INTERVENCIJA", label: "Intervencija" },
+  { value: "PREMONTAZA", label: "Premontaža" },
+  { value: "OSTALO", label: "Ostalo" },
+];
+
+export function taskTypeLabel(type: string) {
+  return TASK_TYPES.find((t) => t.value === type)?.label ?? type;
+}
+
 export type PlannedTaskItem = {
   id: string;
   vehiclePlate: string;
+  type: string | null;
   note: string | null;
-  expectedInstaller: string | null;
-  expectedInstallerOtherText: string | null;
   workOrderId: string | null;
 };
 
@@ -72,6 +89,8 @@ export type PlanGroupItem = {
   startAt: string;
   endAt: string;
   note: string | null;
+  expectedInstaller: string | null;
+  expectedInstallerOtherText: string | null;
   tasks: PlannedTaskItem[];
 };
 
@@ -127,9 +146,11 @@ export function PlanCalendar({
   const [modalOpen, setModalOpen] = useState(false);
   const [modalKey, setModalKey] = useState(0);
   const [modalStartDefault, setModalStartDefault] = useState("");
+  const [modalEndDateDefault, setModalEndDateDefault] = useState("");
   const [clientId, setClientId] = useState("");
   const [startAtIso, setStartAtIso] = useState("");
   const [endAtIso, setEndAtIso] = useState("");
+  const [newGroupInstaller, setNewGroupInstaller] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createPlanGroup, undefined);
 
@@ -150,19 +171,23 @@ export function PlanCalendar({
     return PALETTE[hashToIndex(clientId, PALETTE.length)];
   }
 
-  // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času -- prazen niz za ročni vnos (gumb "Nov
-  // dogodek"), sicer predizpolnjen iz kliknjenega kvadratka v koledarju.
-  function openCreateModal(startDefault: string = "") {
+  // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času; endDateDefault: samo "YYYY-MM-DD" (isti dan
+  // kot začetek, brez ure -- trajanje uporabnik vedno vnese ročno). Oba prazna za ročni vnos (gumb
+  // "Nov dogodek"), sicer predizpolnjena iz kliknjenega kvadratka v koledarju.
+  function openCreateModal(startDefault: string = "", endDateDefault: string = "") {
     setClientId("");
     setModalStartDefault(startDefault);
+    setModalEndDateDefault(endDateDefault);
     setStartAtIso(startDefault ? localDateTimeToIso(startDefault) : "");
     setEndAtIso("");
+    setNewGroupInstaller("");
     setModalKey((k) => k + 1);
     setModalOpen(true);
   }
 
   // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika (zaokroženo na 30
-  // min) in odpre ustvarjalni obrazec z že izpolnjenim začetkom; konec ostane za ročni vnos.
+  // min) in odpre ustvarjalni obrazec z že izpolnjenim začetkom IN datumom konca (isti dan); ura
+  // konca ostane za ročni vnos, glej DateTimeInput.
   function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
     if (!canManagePlan) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -176,7 +201,7 @@ export function PlanCalendar({
     const d = String(day.getDate()).padStart(2, "0");
     const hh = String(hour).padStart(2, "0");
     const mm = String(minute).padStart(2, "0");
-    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`);
+    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`, `${y}-${m}-${d}`);
   }
 
   function goToWeek(offsetDays: number) {
@@ -288,6 +313,11 @@ export function PlanCalendar({
                     const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, 0.25);
                     const widthPct = 100 / g.laneCount;
                     const doneCount = g.tasks.filter((t) => t.workOrderId).length;
+                    const installerText = g.expectedInstaller
+                      ? g.expectedInstaller === "OSTALO"
+                        ? g.expectedInstallerOtherText || "Ostalo"
+                        : installerLabel(g.expectedInstaller)
+                      : null;
                     return (
                       <button
                         key={g.id}
@@ -307,9 +337,21 @@ export function PlanCalendar({
                         title={g.clientName}
                       >
                         <div className="truncate font-semibold">{g.clientName}</div>
-                        <div className="truncate">
-                          {g.tasks.length > 0 ? `${doneCount}/${g.tasks.length} opravljenih` : "brez nalogov"}
-                        </div>
+                        {installerText && <div className="truncate">{installerText}</div>}
+                        {g.tasks.length > 0 ? (
+                          <>
+                            <div className="truncate">{doneCount}/{g.tasks.length}</div>
+                            {g.tasks.map((t) => (
+                              <div key={t.id} className="truncate">
+                                {t.type ? `${taskTypeLabel(t.type)} ` : ""}
+                                {t.vehiclePlate}
+                                {t.note ? ` ${t.note}` : ""}
+                              </div>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="truncate">brez nalogov</div>
+                        )}
                       </button>
                     );
                   })}
@@ -366,6 +408,7 @@ export function PlanCalendar({
                   key={`end-${modalKey}`}
                   withTime
                   required
+                  defaultValue={modalEndDateDefault}
                   onValueChange={(v) => setEndAtIso(localDateTimeToIso(v))}
                 />
               </label>
@@ -374,6 +417,33 @@ export function PlanCalendar({
               Opomba (neobvezno)
               <textarea name="note" rows={2} className={fieldClass()} />
             </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Monter (neobvezno, velja za cel dogodek)
+              </label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select
+                  name="expectedInstaller"
+                  value={newGroupInstaller}
+                  onChange={(e) => setNewGroupInstaller(e.target.value)}
+                  className={`${fieldClass()} mt-0 w-auto`}
+                >
+                  <option value="">— ni določen —</option>
+                  {INSTALLERS.map((name) => (
+                    <option key={name} value={name}>
+                      {installerLabel(name)}
+                    </option>
+                  ))}
+                </select>
+                {newGroupInstaller === "OSTALO" && (
+                  <input
+                    name="expectedInstallerOtherText"
+                    placeholder="Ime monterja"
+                    className={`${fieldClass()} mt-0 flex-1`}
+                  />
+                )}
+              </div>
+            </div>
             {state?.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
             <div className="flex justify-end gap-2">
               <button

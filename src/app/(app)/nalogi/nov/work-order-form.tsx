@@ -75,6 +75,7 @@ export function WorkOrderForm({
   lockedClientName,
   initialVehiclePlate,
   initialComment,
+  initialType,
 }: {
   clients: Client[];
   vehiclePlates: string[];
@@ -83,11 +84,12 @@ export function WorkOrderForm({
   lockedClientName?: string;
   initialVehiclePlate?: string;
   initialComment?: string;
+  initialType?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [type, setType] = useState("MONTAZA");
+  const [type, setType] = useState(initialType ?? "MONTAZA");
   const [difficulty, setDifficulty] = useState("OSNOVNA");
   const [clientId, setClientId] = useState(initialClientId ?? "");
 

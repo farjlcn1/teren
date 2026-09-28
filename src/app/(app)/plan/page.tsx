@@ -52,12 +52,13 @@ export default async function PlanPage({
           startAt: g.startAt.toISOString(),
           endAt: g.endAt.toISOString(),
           note: g.note,
+          expectedInstaller: g.expectedInstaller,
+          expectedInstallerOtherText: g.expectedInstallerOtherText,
           tasks: g.tasks.map((t) => ({
             id: t.id,
             vehiclePlate: t.vehiclePlate,
+            type: t.type,
             note: t.note,
-            expectedInstaller: t.expectedInstaller,
-            expectedInstallerOtherText: t.expectedInstallerOtherText,
             workOrderId: t.workOrderId,
           })),
         }))}

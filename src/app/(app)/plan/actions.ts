@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/session";
 import type { InstallerName } from "@/generated/prisma/client";
 
 const INSTALLER_NAMES = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"] as const;
+const WORK_ORDER_TYPES = ["MONTAZA", "DEMONTAZA", "INTERVENCIJA", "PREMONTAZA", "OSTALO"] as const;
 
 export type PlanActionState = { error?: string; success?: boolean; groupId?: string } | undefined;
 
@@ -15,6 +16,8 @@ const planGroupSchema = z.object({
   startAt: z.string().min(1, "Vnesi začetek."),
   endAt: z.string().min(1, "Vnesi konec."),
   note: z.string().optional(),
+  expectedInstaller: z.union([z.enum(INSTALLER_NAMES), z.literal("")]).optional(),
+  expectedInstallerOtherText: z.string().optional(),
 });
 
 function parsePlanGroupInput(formData: FormData) {
@@ -23,6 +26,8 @@ function parsePlanGroupInput(formData: FormData) {
     startAt: formData.get("startAt"),
     endAt: formData.get("endAt"),
     note: formData.get("note") || undefined,
+    expectedInstaller: formData.get("expectedInstaller") || "",
+    expectedInstallerOtherText: formData.get("expectedInstallerOtherText") || undefined,
   });
 }
 
@@ -43,6 +48,11 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
     return { error: "Konec mora biti po začetku." };
   }
 
+  const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
+  if (expectedInstaller === "OSTALO" && !parsed.data.expectedInstallerOtherText?.trim()) {
+    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
+  }
+
   const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
   if (!client) return { error: "Stranka ne obstaja." };
 
@@ -52,6 +62,8 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
       startAt,
       endAt,
       note: parsed.data.note || null,
+      expectedInstaller,
+      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
       createdById: user.id,
     },
   });
@@ -92,12 +104,24 @@ export async function updatePlanGroup(
     return { error: "Konec mora biti po začetku." };
   }
 
+  const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
+  if (expectedInstaller === "OSTALO" && !parsed.data.expectedInstallerOtherText?.trim()) {
+    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
+  }
+
   const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
   if (!client) return { error: "Stranka ne obstaja." };
 
   await prisma.planGroup.update({
     where: { id: planGroupId },
-    data: { clientId: client.id, startAt, endAt, note: parsed.data.note || null },
+    data: {
+      clientId: client.id,
+      startAt,
+      endAt,
+      note: parsed.data.note || null,
+      expectedInstaller,
+      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
+    },
   });
 
   revalidatePath("/plan");
@@ -123,9 +147,8 @@ export async function deletePlanGroup(planGroupId: string): Promise<{ error?: st
 
 const plannedTaskSchema = z.object({
   vehiclePlate: z.string().trim().min(1, "Vnesi registrsko številko."),
+  type: z.union([z.enum(WORK_ORDER_TYPES), z.literal("")]).optional(),
   note: z.string().optional(),
-  expectedInstaller: z.union([z.enum(INSTALLER_NAMES), z.literal("")]).optional(),
-  expectedInstallerOtherText: z.string().optional(),
 });
 
 export async function addPlannedTask(
@@ -140,26 +163,19 @@ export async function addPlannedTask(
 
   const parsed = plannedTaskSchema.safeParse({
     vehiclePlate: formData.get("vehiclePlate"),
+    type: formData.get("type") || "",
     note: formData.get("note") || undefined,
-    expectedInstaller: formData.get("expectedInstaller") || "",
-    expectedInstallerOtherText: formData.get("expectedInstallerOtherText") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki." };
-  }
-
-  const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
-  if (expectedInstaller === "OSTALO" && !parsed.data.expectedInstallerOtherText?.trim()) {
-    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
   }
 
   await prisma.plannedTask.create({
     data: {
       planGroupId,
       vehiclePlate: parsed.data.vehiclePlate,
+      type: parsed.data.type || null,
       note: parsed.data.note || null,
-      expectedInstaller,
-      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
     },
   });
 

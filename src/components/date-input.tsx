@@ -67,11 +67,22 @@ export function DateTimeInput({
   className?: string;
   onValueChange?: (value: string) => void;
 }) {
+  // Ura/minuta ostaneta prazni ("--"), dokler jih uporabnik dejansko ne izbere -- defaultValue
+  // lahko namreč vsebuje samo datum (npr. predizpolnitev konca dogodka na isti dan kot začetek, brez
+  // vnaprej uganjene ure trajanja).
   const [datePart, setDatePart] = useState(() => (defaultValue ? defaultValue.slice(0, 10) : ""));
-  const [hour, setHour] = useState(() => (defaultValue && withTime ? defaultValue.slice(11, 13) || "09" : "09"));
-  const [minute, setMinute] = useState(() => (defaultValue && withTime ? defaultValue.slice(14, 16) || "00" : "00"));
+  const [hour, setHour] = useState(() => (defaultValue && withTime ? defaultValue.slice(11, 13) : ""));
+  const [minute, setMinute] = useState(() => (defaultValue && withTime ? defaultValue.slice(14, 16) : ""));
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Ob odpiranju se je znalo zgoditi, da je takoj za odpiralnim klikom prispel še en klik na isto
+  // mesto na zaslonu (podvojen/odmeven dogodek s strani vhodne naprave ali orodja za avtomatizacijo),
+  // ki je pristal na "‹"/"›" znotraj pravkar odprtega koledarčka in premaknil prikazani mesec. Ta
+  // časovna zaščita takšne prehitre klike znotraj koledarčka po odprtju preprosto prezre.
+  const openedAtRef = useRef(0);
+  function justOpened(): boolean {
+    return performance.now() - openedAtRef.current < 300;
+  }
 
   const initial = datePart ? new Date(`${datePart}T00:00:00`) : new Date();
   const [viewYear, setViewYear] = useState(() => initial.getFullYear());
@@ -95,7 +106,9 @@ export function DateTimeInput({
 
   function combined(d: string, h: string, m: string): string {
     if (!withTime) return d;
-    return d ? `${d}T${h}:${m}` : "";
+    // Nepopolno (manjka datum ali ura/minuta) namenoma vrne "" -- klicatelj (npr. gumb "Ustvari") s
+    // tem prek prazne skrite vrednosti sam zazna, da izbira konca še ni zaključena.
+    return d && h && m ? `${d}T${h}:${m}` : "";
   }
 
   function emitDate(next: string) {
@@ -112,16 +125,27 @@ export function DateTimeInput({
   }
 
   function pickDay(day: number) {
+    if (justOpened()) return;
     const iso = `${viewYear}-${pad2(viewMonth + 1)}-${pad2(day)}`;
     emitDate(iso);
     if (!withTime) setOpen(false);
   }
 
+  // Ob odpiranju preračuna prikazani mesec/leto iz trenutnega datePart -- v navadnem dogodkovnem
+  // handlerju (klik), ne v renderju ali v setOpen-ovem updaterju, da se prikaže pravi mesec tudi, če
+  // se komponenta med dvema odpiranjima ni ponovno ustvarila.
   function openPicker() {
+    if (!open) {
+      const base = datePart ? new Date(`${datePart}T00:00:00`) : new Date();
+      setViewYear(base.getFullYear());
+      setViewMonth(base.getMonth());
+      openedAtRef.current = performance.now();
+    }
     setOpen((v) => !v);
   }
 
   function prevMonth() {
+    if (justOpened()) return;
     if (viewMonth === 0) {
       setViewMonth(11);
       setViewYear((y) => y - 1);
@@ -130,6 +154,7 @@ export function DateTimeInput({
     }
   }
   function nextMonth() {
+    if (justOpened()) return;
     if (viewMonth === 11) {
       setViewMonth(0);
       setViewYear((y) => y + 1);
@@ -167,7 +192,7 @@ export function DateTimeInput({
       >
         <span className={datePart ? "" : "text-gray-400 dark:text-gray-500"}>
           {datePart
-            ? `${formatDatePart(datePart)}${withTime ? `  ${hour}:${minute}` : ""}`
+            ? `${formatDatePart(datePart)}${withTime ? `  ${hour || "--"}:${minute || "--"}` : ""}`
             : withTime
               ? "dd/mm/yyyy  hh:mm"
               : "dd/mm/yyyy"}
@@ -229,6 +254,7 @@ export function DateTimeInput({
           {withTime && (
             <div className="mt-3 flex items-center justify-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
               <select value={hour} onChange={(e) => emitHour(e.target.value)} className={selectClass()}>
+                <option value="">--</option>
                 {HOURS.map((h) => (
                   <option key={h} value={h}>
                     {h}
@@ -237,6 +263,7 @@ export function DateTimeInput({
               </select>
               <span className="text-gray-500 dark:text-gray-400">:</span>
               <select value={minute} onChange={(e) => emitMinute(e.target.value)} className={selectClass()}>
+                <option value="">--</option>
                 {MINUTES.map((m) => (
                   <option key={m} value={m}>
                     {m}

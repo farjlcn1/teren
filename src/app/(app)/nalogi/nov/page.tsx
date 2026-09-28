@@ -54,6 +54,7 @@ export default async function NovNalogPage({
         lockedClientName={plannedTask?.planGroup.client.name}
         initialVehiclePlate={plannedTask?.vehiclePlate}
         initialComment={plannedTask?.note ?? undefined}
+        initialType={plannedTask?.type ?? undefined}
       />
     </div>
   );

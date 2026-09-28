@@ -6,13 +6,15 @@ import { ClientCombobox } from "@/components/client-combobox";
 import { PlateCombobox } from "@/components/plate-combobox";
 import { DateTimeInput } from "@/components/date-input";
 import { updatePlanGroup, deletePlanGroup, addPlannedTask, deletePlannedTask } from "./actions";
-import { isoToLocalDateTimeStr, localDateTimeToIso, type PlanGroupItem } from "./plan-calendar";
-
-const INSTALLERS = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"];
-
-function installerLabel(name: string) {
-  return name === "OSTALO" ? "Ostalo" : name.charAt(0) + name.slice(1).toLowerCase();
-}
+import {
+  isoToLocalDateTimeStr,
+  localDateTimeToIso,
+  INSTALLERS,
+  installerLabel,
+  TASK_TYPES,
+  taskTypeLabel,
+  type PlanGroupItem,
+} from "./plan-calendar";
 
 function fieldClass() {
   return "mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100";
@@ -45,11 +47,13 @@ export function GroupPopup({
   const [editClientId, setEditClientId] = useState(group.clientId);
   const [editStartAtIso, setEditStartAtIso] = useState(group.startAt);
   const [editEndAtIso, setEditEndAtIso] = useState(group.endAt);
+  const [editInstaller, setEditInstaller] = useState(group.expectedInstaller ?? "");
+  const [editInstallerOtherText, setEditInstallerOtherText] = useState(group.expectedInstallerOtherText ?? "");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  const [newInstaller, setNewInstaller] = useState("");
+  const [newTaskType, setNewTaskType] = useState("");
   const [taskFormKey, setTaskFormKey] = useState(0);
 
   const boundUpdate = updatePlanGroup.bind(null, group.id);
@@ -68,7 +72,7 @@ export function GroupPopup({
   // so nekontrolirani/lokalni, zato jih prisilimo v remount s spremembo key-ja namesto ročnega resetiranja.
   useEffect(() => {
     if (addState?.success) {
-      setNewInstaller("");
+      setNewTaskType("");
       setTaskFormKey((k) => k + 1);
     }
   }, [addState]);
@@ -77,6 +81,8 @@ export function GroupPopup({
     setEditClientId(group.clientId);
     setEditStartAtIso(group.startAt);
     setEditEndAtIso(group.endAt);
+    setEditInstaller(group.expectedInstaller ?? "");
+    setEditInstallerOtherText(group.expectedInstallerOtherText ?? "");
     setEditMode(true);
   }
 
@@ -148,6 +154,35 @@ export function GroupPopup({
               Opomba (neobvezno)
               <textarea name="note" rows={2} defaultValue={group.note ?? ""} className={fieldClass()} />
             </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Monter (neobvezno, velja za cel dogodek)
+              </label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select
+                  name="expectedInstaller"
+                  value={editInstaller}
+                  onChange={(e) => setEditInstaller(e.target.value)}
+                  className={`${fieldClass()} mt-0 w-auto`}
+                >
+                  <option value="">— ni določen —</option>
+                  {INSTALLERS.map((name) => (
+                    <option key={name} value={name}>
+                      {installerLabel(name)}
+                    </option>
+                  ))}
+                </select>
+                {editInstaller === "OSTALO" && (
+                  <input
+                    name="expectedInstallerOtherText"
+                    value={editInstallerOtherText}
+                    onChange={(e) => setEditInstallerOtherText(e.target.value)}
+                    placeholder="Ime monterja"
+                    className={`${fieldClass()} mt-0 flex-1`}
+                  />
+                )}
+              </div>
+            </div>
             {updateState?.error && <p className="text-sm text-red-600 dark:text-red-400">{updateState.error}</p>}
             <div className="flex justify-end gap-2">
               <button
@@ -174,6 +209,14 @@ export function GroupPopup({
                 <div className="mt-1 space-y-0.5 text-xs text-gray-600 dark:text-gray-400">
                   <div>Od: {fmtDateTime(group.startAt)}</div>
                   <div>Do: {fmtDateTime(group.endAt)}</div>
+                  {group.expectedInstaller && (
+                    <div>
+                      Monter:{" "}
+                      {group.expectedInstaller === "OSTALO"
+                        ? group.expectedInstallerOtherText || "Ostalo"
+                        : installerLabel(group.expectedInstaller)}
+                    </div>
+                  )}
                   {group.note && <div>Opomba: {group.note}</div>}
                 </div>
               </div>
@@ -213,16 +256,11 @@ export function GroupPopup({
                     className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-2.5 py-2 text-sm dark:border-gray-700"
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-medium text-gray-900 dark:text-gray-100">{t.vehiclePlate}</div>
+                      <div className="truncate font-medium text-gray-900 dark:text-gray-100">
+                        {t.vehiclePlate}
+                        {t.type && <span className="ml-1.5 font-normal text-gray-500 dark:text-gray-400">· {taskTypeLabel(t.type)}</span>}
+                      </div>
                       {t.note && <div className="truncate text-xs text-gray-500 dark:text-gray-400">{t.note}</div>}
-                      {t.expectedInstaller && (
-                        <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                          Pričakovan monter:{" "}
-                          {t.expectedInstaller === "OSTALO"
-                            ? t.expectedInstallerOtherText || "Ostalo"
-                            : installerLabel(t.expectedInstaller)}
-                        </div>
-                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {t.workOrderId ? (
@@ -261,29 +299,20 @@ export function GroupPopup({
                 <h4 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Dodaj nalog</h4>
                 <div key={taskFormKey} className="space-y-2">
                   <PlateComboboxField vehiclePlates={vehiclePlates} />
+                  <select
+                    name="type"
+                    value={newTaskType}
+                    onChange={(e) => setNewTaskType(e.target.value)}
+                    className={fieldClass()}
+                  >
+                    <option value="">— tip naloga (neobvezno) —</option>
+                    {TASK_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
                   <textarea name="note" rows={1} placeholder="Opomba (neobvezno)" className={fieldClass()} />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      name="expectedInstaller"
-                      value={newInstaller}
-                      onChange={(e) => setNewInstaller(e.target.value)}
-                      className={`${fieldClass()} mt-0 w-auto`}
-                    >
-                      <option value="">— brez pričakovanega monterja —</option>
-                      {INSTALLERS.map((name) => (
-                        <option key={name} value={name}>
-                          {installerLabel(name)}
-                        </option>
-                      ))}
-                    </select>
-                    {newInstaller === "OSTALO" && (
-                      <input
-                        name="expectedInstallerOtherText"
-                        placeholder="Ime monterja"
-                        className={`${fieldClass()} mt-0 flex-1`}
-                      />
-                    )}
-                  </div>
                 </div>
                 {addState?.error && <p className="text-sm text-red-600 dark:text-red-400">{addState.error}</p>}
                 <div className="flex justify-end">
