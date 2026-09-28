@@ -349,7 +349,6 @@ export function PlanCalendar({
                               <div key={t.id} className="truncate">
                                 {t.type ? `${taskTypeLabel(t.type)} ` : ""}
                                 {t.vehiclePlate}
-                                {t.note ? ` ${t.note}` : ""}
                               </div>
                             ))}
                           </>
