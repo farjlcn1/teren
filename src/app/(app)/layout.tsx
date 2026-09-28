@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="border-b border-blue-700 bg-blue-600">
-        <div className="mx-auto max-w-6xl px-4 py-3">
+        <div className="mx-auto max-w-[1600px] px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <span className="font-semibold text-white">Teren</span>
             <div className="flex items-center gap-3">
@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLinks links={links.filter((l) => l.show)} />
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-[1600px] px-4 py-6">{children}</main>
     </div>
   );
 }
