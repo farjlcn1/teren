@@ -16,6 +16,7 @@ const planGroupSchema = z.object({
   startAt: z.string().min(1, "Vnesi začetek."),
   endAt: z.string().min(1, "Vnesi konec."),
   note: z.string().optional(),
+  contact: z.string().optional(),
   expectedInstaller: z.union([z.enum(INSTALLER_NAMES), z.literal("")]).optional(),
   expectedInstallerOtherText: z.string().optional(),
 });
@@ -26,6 +27,7 @@ function parsePlanGroupInput(formData: FormData) {
     startAt: formData.get("startAt"),
     endAt: formData.get("endAt"),
     note: formData.get("note") || undefined,
+    contact: formData.get("contact") || undefined,
     expectedInstaller: formData.get("expectedInstaller") || "",
     expectedInstallerOtherText: formData.get("expectedInstallerOtherText") || undefined,
   });
@@ -62,6 +64,7 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
       startAt,
       endAt,
       note: parsed.data.note || null,
+      contact: parsed.data.contact || null,
       expectedInstaller,
       expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
       createdById: user.id,
@@ -119,6 +122,7 @@ export async function updatePlanGroup(
       startAt,
       endAt,
       note: parsed.data.note || null,
+      contact: parsed.data.contact || null,
       expectedInstaller,
       expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
     },

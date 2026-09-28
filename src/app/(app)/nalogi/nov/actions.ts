@@ -186,26 +186,57 @@ export async function createWorkOrder(
   } else {
     // Nalog ni nastal iz obstoječega plana (monter ga je ustvaril neposredno) -- da tudi tako delo
     // pristane na zavihku Plan, samodejno ustvari dogodek in nalog znotraj njega, že označen kot
-    // opravljen (workOrderId je nastavljen takoj), saj je delo v resnici že opravljeno.
+    // opravljen (workOrderId je nastavljen takoj), saj je delo v resnici že opravljeno. Privzeto
+    // 1h okno namesto ničelnega trajanja; če isti monter pri isti stranki naredi več nalogov
+    // zaporedoma (naslednji pride, preden se prejšnje okno izteče), se združijo v en dogodek.
     const primaryInstaller = data.installers[0];
-    await prisma.planGroup.create({
-      data: {
+    const otherText = primaryInstaller.name === "OSTALO" ? primaryInstaller.otherText || null : null;
+    const oneHourLater = new Date(orderDate.getTime() + 60 * 60 * 1000);
+
+    const mergeCandidate = await prisma.planGroup.findFirst({
+      where: {
         clientId: data.clientId,
-        startAt: orderDate,
-        endAt: orderDate,
         expectedInstaller: primaryInstaller.name,
-        expectedInstallerOtherText: primaryInstaller.name === "OSTALO" ? primaryInstaller.otherText || null : null,
-        createdById: user.id,
-        tasks: {
-          create: {
+        expectedInstallerOtherText: otherText,
+        endAt: { gte: orderDate },
+      },
+      orderBy: { endAt: "desc" },
+    });
+
+    if (mergeCandidate) {
+      const newEndAt = oneHourLater > mergeCandidate.endAt ? oneHourLater : mergeCandidate.endAt;
+      await prisma.$transaction([
+        prisma.plannedTask.create({
+          data: {
+            planGroupId: mergeCandidate.id,
             vehiclePlate: data.vehiclePlate,
             type: data.type,
             note: data.comment || null,
             workOrderId: workOrder.id,
           },
+        }),
+        prisma.planGroup.update({ where: { id: mergeCandidate.id }, data: { endAt: newEndAt } }),
+      ]);
+    } else {
+      await prisma.planGroup.create({
+        data: {
+          clientId: data.clientId,
+          startAt: orderDate,
+          endAt: oneHourLater,
+          expectedInstaller: primaryInstaller.name,
+          expectedInstallerOtherText: otherText,
+          createdById: user.id,
+          tasks: {
+            create: {
+              vehiclePlate: data.vehiclePlate,
+              type: data.type,
+              note: data.comment || null,
+              workOrderId: workOrder.id,
+            },
+          },
         },
-      },
-    });
+      });
+    }
   }
   revalidatePath("/plan");
 

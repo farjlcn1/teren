@@ -52,6 +52,7 @@ export default async function PlanPage({
           startAt: g.startAt.toISOString(),
           endAt: g.endAt.toISOString(),
           note: g.note,
+          contact: g.contact,
           expectedInstaller: g.expectedInstaller,
           expectedInstallerOtherText: g.expectedInstallerOtherText,
           tasks: g.tasks.map((t) => ({

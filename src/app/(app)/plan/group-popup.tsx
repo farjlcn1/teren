@@ -49,6 +49,7 @@ export function GroupPopup({
   const [editEndAtIso, setEditEndAtIso] = useState(group.endAt);
   const [editInstaller, setEditInstaller] = useState(group.expectedInstaller ?? "");
   const [editInstallerOtherText, setEditInstallerOtherText] = useState(group.expectedInstallerOtherText ?? "");
+  const [editContact, setEditContact] = useState(group.contact ?? "");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -83,6 +84,7 @@ export function GroupPopup({
     setEditEndAtIso(group.endAt);
     setEditInstaller(group.expectedInstaller ?? "");
     setEditInstallerOtherText(group.expectedInstallerOtherText ?? "");
+    setEditContact(group.contact ?? "");
     setEditMode(true);
   }
 
@@ -154,6 +156,16 @@ export function GroupPopup({
               Opomba (neobvezno)
               <textarea name="note" rows={2} defaultValue={group.note ?? ""} className={fieldClass()} />
             </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Kontakt (neobvezno)
+              <input
+                name="contact"
+                type="text"
+                value={editContact}
+                onChange={(e) => setEditContact(e.target.value)}
+                className={fieldClass()}
+              />
+            </label>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Monter (neobvezno, velja za cel dogodek)
@@ -217,6 +229,7 @@ export function GroupPopup({
                         : installerLabel(group.expectedInstaller)}
                     </div>
                   )}
+                  {group.contact && <div>Kontakt: {group.contact}</div>}
                   {group.note && <div>Opomba: {group.note}</div>}
                 </div>
               </div>

@@ -13,7 +13,12 @@ const PALETTE = [
 ];
 const DAY_LABELS = ["Pon", "Tor", "Sre", "Čet", "Pet", "Sob", "Ned"];
 const PX_PER_HOUR = 40;
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
+// Urnik prikazuje samo 6h-18h (najpogostejši delovni čas) -- manj praznega prostora za skrolanje.
+// Dogodek izven tega okna se ne izgubi (dnevno članstvo spodaj še vedno šteje cel dan), le vizualno
+// se obreže na rob vidnega okna.
+const DAY_START_HOUR = 6;
+const DAY_END_HOUR = 18;
+const HOURS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => i + DAY_START_HOUR);
 
 // d.toISOString() vrne UTC datum, d.setDate/getDate pa delata v lokalnem času -- lokalna polnoč
 // pade na prejšnji dan v UTC, zato bi toISOString().slice(0,10) tu vrnil napačen dan. Za "lokalni
@@ -89,6 +94,7 @@ export type PlanGroupItem = {
   startAt: string;
   endAt: string;
   note: string | null;
+  contact: string | null;
   expectedInstaller: string | null;
   expectedInstallerOtherText: string | null;
   tasks: PlannedTaskItem[];
@@ -154,10 +160,14 @@ export function PlanCalendar({
   const [newGroupInstaller, setNewGroupInstaller] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createPlanGroup, undefined);
+  const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
 
   // Nikoli zamrznjena kopija -- izbrana skupina se sveže poišče iz `groups` ob vsakem renderju, da
   // odprt pojavni pano takoj odraža nov nalog po revalidatePath("/plan") (npr. po addPlannedTask).
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
+
+  const visibleGroups =
+    installerFilter === "ALL" ? groups : groups.filter((g) => g.expectedInstaller === installerFilter);
 
   useEffect(() => {
     if (state?.success) {
@@ -252,15 +262,35 @@ export function PlanCalendar({
             {days[6].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })}
           </span>
         </div>
-        {canManagePlan && (
-          <button
-            type="button"
-            onClick={() => openCreateModal()}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
-          >
-            Nov dogodek
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { key: "ALL", label: "Skupaj" },
+            { key: "SIMON", label: "Simon" },
+            { key: "VITO", label: "Vito" },
+          ] as const).map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setInstallerFilter(f.key)}
+              className={
+                installerFilter === f.key
+                  ? "rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+                  : "rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+          {canManagePlan && (
+            <button
+              type="button"
+              onClick={() => openCreateModal()}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              Nov dogodek
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
@@ -282,21 +312,27 @@ export function PlanCalendar({
                 <div
                   key={h}
                   className="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500"
-                  style={{ top: h * PX_PER_HOUR }}
+                  style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
                 >
                   {String(h).padStart(2, "0")}:00
                 </div>
               ))}
             </div>
             {days.map((day, dayIdx) => {
+              // Dnevno članstvo šteje cel dan (0h-24h), da nalog izven prikazanega okna (6h-18h) ne
+              // izgine iz koledarja -- samo vizualno se obreže na rob vidnega okna spodaj.
               const dayStart = new Date(day);
               dayStart.setHours(0, 0, 0, 0);
               const dayEnd = new Date(dayStart);
               dayEnd.setDate(dayEnd.getDate() + 1);
-              const dayGroups = groups.filter(
+              const dayGroups = visibleGroups.filter(
                 (g) => new Date(g.startAt) < dayEnd && new Date(g.endAt) > dayStart
               );
               const positioned = packGroupsForDay(dayGroups);
+              const visibleStart = new Date(day);
+              visibleStart.setHours(DAY_START_HOUR, 0, 0, 0);
+              const visibleEnd = new Date(day);
+              visibleEnd.setHours(DAY_END_HOUR, 0, 0, 0);
               return (
                 <div
                   key={dayIdx}
@@ -307,13 +343,13 @@ export function PlanCalendar({
                     <div
                       key={h}
                       className="absolute left-0 right-0 border-t border-gray-100 dark:border-gray-800"
-                      style={{ top: h * PX_PER_HOUR }}
+                      style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
                     />
                   ))}
                   {positioned.map((g) => {
-                    const clampedStart = Math.max(new Date(g.startAt).getTime(), dayStart.getTime());
-                    const clampedEnd = Math.min(new Date(g.endAt).getTime(), dayEnd.getTime());
-                    const topHours = (clampedStart - dayStart.getTime()) / 3_600_000;
+                    const clampedStart = Math.max(new Date(g.startAt).getTime(), visibleStart.getTime());
+                    const clampedEnd = Math.min(new Date(g.endAt).getTime(), visibleEnd.getTime());
+                    const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
                     const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, 0.25);
                     const widthPct = 100 / g.laneCount;
                     const doneCount = g.tasks.filter((t) => t.workOrderId).length;
@@ -341,17 +377,25 @@ export function PlanCalendar({
                         title={g.clientName}
                       >
                         <div className="truncate font-semibold">{g.clientName}</div>
-                        {installerText && <div className="truncate">{installerText}</div>}
+                        {installerText && (
+                          <div className="truncate">
+                            {installerText}
+                            {g.tasks.length > 0 ? ` · ${doneCount}/${g.tasks.length}` : ""}
+                          </div>
+                        )}
+                        {!installerText && g.tasks.length > 0 && (
+                          <div className="truncate">{doneCount}/{g.tasks.length}</div>
+                        )}
                         {g.tasks.length > 0 ? (
-                          <>
-                            <div className="truncate">{doneCount}/{g.tasks.length}</div>
-                            {g.tasks.map((t) => (
-                              <div key={t.id} className="truncate">
+                          g.tasks.map((t) => (
+                            <div key={t.id}>
+                              <div className="truncate">
                                 {t.type ? `${taskTypeLabel(t.type)} ` : ""}
                                 {t.vehiclePlate}
                               </div>
-                            ))}
-                          </>
+                              {t.note && <div className="truncate">{t.note}</div>}
+                            </div>
+                          ))
                         ) : (
                           <div className="truncate">brez nalogov</div>
                         )}
@@ -421,6 +465,10 @@ export function PlanCalendar({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Opomba (neobvezno)
               <textarea name="note" rows={2} className={fieldClass()} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Kontakt (neobvezno)
+              <input name="contact" type="text" className={fieldClass()} />
             </label>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
