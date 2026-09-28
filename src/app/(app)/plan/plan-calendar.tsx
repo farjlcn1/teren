@@ -147,6 +147,7 @@ export function PlanCalendar({
   const [modalKey, setModalKey] = useState(0);
   const [modalStartDefault, setModalStartDefault] = useState("");
   const [modalEndDateDefault, setModalEndDateDefault] = useState("");
+  const [modalLockDate, setModalLockDate] = useState(false);
   const [clientId, setClientId] = useState("");
   const [startAtIso, setStartAtIso] = useState("");
   const [endAtIso, setEndAtIso] = useState("");
@@ -173,11 +174,14 @@ export function PlanCalendar({
 
   // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času; endDateDefault: samo "YYYY-MM-DD" (isti dan
   // kot začetek, brez ure -- trajanje uporabnik vedno vnese ročno). Oba prazna za ročni vnos (gumb
-  // "Nov dogodek"), sicer predizpolnjena iz kliknjenega kvadratka v koledarju.
-  function openCreateModal(startDefault: string = "", endDateDefault: string = "") {
+  // "Nov dogodek"), sicer predizpolnjena iz kliknjenega kvadratka v koledarju. lockDate: true, ko je
+  // datum že določen s klikom na koledar -- takrat DateTimeInput ne dovoli spreminjanja datuma
+  // (samo ura), da klik znotraj časovnega izbirnika ne more po nesreči spremeniti dneva/meseca.
+  function openCreateModal(startDefault: string = "", endDateDefault: string = "", lockDate: boolean = false) {
     setClientId("");
     setModalStartDefault(startDefault);
     setModalEndDateDefault(endDateDefault);
+    setModalLockDate(lockDate);
     setStartAtIso(startDefault ? localDateTimeToIso(startDefault) : "");
     setEndAtIso("");
     setNewGroupInstaller("");
@@ -187,7 +191,7 @@ export function PlanCalendar({
 
   // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika (zaokroženo na 30
   // min) in odpre ustvarjalni obrazec z že izpolnjenim začetkom IN datumom konca (isti dan); ura
-  // konca ostane za ročni vnos, glej DateTimeInput.
+  // konca ostane za ročni vnos, glej DateTimeInput. Datum (dan) je s tem že določen, zato lockDate.
   function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
     if (!canManagePlan) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -201,7 +205,7 @@ export function PlanCalendar({
     const d = String(day.getDate()).padStart(2, "0");
     const hh = String(hour).padStart(2, "0");
     const mm = String(minute).padStart(2, "0");
-    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`, `${y}-${m}-${d}`);
+    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`, `${y}-${m}-${d}`, true);
   }
 
   function goToWeek(offsetDays: number) {
@@ -398,6 +402,7 @@ export function PlanCalendar({
                   key={`start-${modalKey}`}
                   withTime
                   required
+                  lockDate={modalLockDate}
                   defaultValue={modalStartDefault}
                   onValueChange={(v) => setStartAtIso(localDateTimeToIso(v))}
                 />
@@ -408,6 +413,7 @@ export function PlanCalendar({
                   key={`end-${modalKey}`}
                   withTime
                   required
+                  lockDate={modalLockDate}
                   defaultValue={modalEndDateDefault}
                   onValueChange={(v) => setEndAtIso(localDateTimeToIso(v))}
                 />

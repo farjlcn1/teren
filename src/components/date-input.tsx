@@ -31,7 +31,7 @@ const MONTH_NAMES = [
 ];
 const DAY_LABELS = ["P", "T", "S", "Č", "P", "S", "N"];
 const HOURS = Array.from({ length: 24 }, (_, i) => pad2(i));
-const MINUTES = Array.from({ length: 60 }, (_, i) => pad2(i));
+const MINUTES = ["00", "10", "20", "30", "40", "50"];
 
 function CalendarIcon() {
   return (
@@ -57,6 +57,7 @@ export function DateTimeInput({
   defaultValue,
   required,
   withTime = false,
+  lockDate = false,
   className,
   onValueChange,
 }: {
@@ -64,6 +65,10 @@ export function DateTimeInput({
   defaultValue?: string; // "YYYY-MM-DD" ali (withTime) "YYYY-MM-DDTHH:mm"
   required?: boolean;
   withTime?: boolean;
+  // Datum je že določen (npr. s klikom na kvadratek v koledarju) in se tu ne da spreminjati --
+  // odpre se samo izbira ure, brez mesečnega koledarčka, da ni gumbov za prej/naslednji mesec, ki bi
+  // jih lahko po nesreči zadel klik, namenjen izbiri ure.
+  lockDate?: boolean;
   className?: string;
   onValueChange?: (value: string) => void;
 }) {
@@ -207,49 +212,57 @@ export function DateTimeInput({
 
       {open && (
         <div className="absolute left-0 z-30 mt-1 w-64 rounded-md border border-gray-300 bg-white p-3 shadow-lg dark:border-gray-600 dark:bg-gray-800">
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={prevMonth}
-              className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              ‹
-            </button>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {MONTH_NAMES[viewMonth]} {viewYear}
-            </span>
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              ›
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
-            {DAY_LABELS.map((d, i) => (
-              <div key={i} className="py-1 font-medium text-gray-400 dark:text-gray-500">
-                {d}
+          {lockDate ? (
+            <div className="mb-2 text-center text-sm font-medium text-gray-900 dark:text-gray-100">
+              {formatDatePart(datePart)}
+            </div>
+          ) : (
+            <>
+              <div className="mb-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={prevMonth}
+                  className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  ‹
+                </button>
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {MONTH_NAMES[viewMonth]} {viewYear}
+                </span>
+                <button
+                  type="button"
+                  onClick={nextMonth}
+                  className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  ›
+                </button>
               </div>
-            ))}
-            {cells.map((day, i) => (
-              <button
-                key={i}
-                type="button"
-                disabled={day === null}
-                onClick={() => day && pickDay(day)}
-                className={
-                  day === null
-                    ? ""
-                    : day === selectedDay
-                      ? "rounded bg-blue-600 py-1 text-white"
-                      : "rounded py-1 text-gray-700 hover:bg-blue-50 dark:text-gray-300 dark:hover:bg-gray-700"
-                }
-              >
-                {day ?? ""}
-              </button>
-            ))}
-          </div>
+              <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
+                {DAY_LABELS.map((d, i) => (
+                  <div key={i} className="py-1 font-medium text-gray-400 dark:text-gray-500">
+                    {d}
+                  </div>
+                ))}
+                {cells.map((day, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={day === null}
+                    onClick={() => day && pickDay(day)}
+                    className={
+                      day === null
+                        ? ""
+                        : day === selectedDay
+                          ? "rounded bg-blue-600 py-1 text-white"
+                          : "rounded py-1 text-gray-700 hover:bg-blue-50 dark:text-gray-300 dark:hover:bg-gray-700"
+                    }
+                  >
+                    {day ?? ""}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {withTime && (
             <div className="mt-3 flex items-center justify-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
