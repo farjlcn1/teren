@@ -13,6 +13,10 @@ const PALETTE = [
 ];
 const DAY_LABELS = ["Pon", "Tor", "Sre", "Čet", "Pet", "Sob", "Ned"];
 const PX_PER_HOUR = 80;
+// Najkrajše prikazano trajanje bloka na koledarju (tudi za dogodek brez pravega trajanja) -- isti
+// prag mora uporabiti tudi packGroupsForDay spodaj, sicer lahko dva dogodka, ki se v surovih časih
+// komaj ne prekrivata, po tem vizualnem raztegu vseeno pristaneta v isti stezi in se prekrijeta.
+const MIN_DISPLAY_HOURS = 0.25;
 // Urnik prikazuje samo 6h-18h (najpogostejši delovni čas) -- manj praznega prostora za skrolanje.
 // Dogodek izven tega okna se ne izgubi (dnevno članstvo spodaj še vedno šteje cel dan), le vizualno
 // se obreže na rob vidnega okna.
@@ -102,27 +106,37 @@ export type PlanGroupItem = {
 
 type PositionedGroup = PlanGroupItem & { lane: number; laneCount: number };
 
+// Dogodku vrne "efektivni" konec za razporejanje v steze -- vsaj MIN_DISPLAY_HOURS po začetku,
+// enako spodnji meji, ki jo pri risanju uporabi durationHours. Brez tega bi npr. dva dogodka z
+// ničelnim/zelo kratkim surovim trajanjem, ki se v resnici komaj ne prekrivata, po vizualnem
+// raztegu na minimalno višino vseeno pristala v isti stezi in se na zaslonu prekrila.
+function effectiveEndAt(startAt: string, endAt: string): string {
+  const minEnd = new Date(startAt).getTime() + MIN_DISPLAY_HOURS * 3_600_000;
+  return new Date(endAt).getTime() > minEnd ? endAt : new Date(minEnd).toISOString();
+}
+
 // Prekrivajoce se dogodke istega dne razporedi v "steze" (kot Outlook/Google Calendar dnevni
 // pogled), da se vizualno ne prekrivajo -- pohlepni algoritem: vsak dogodek gre v prvo prosto
 // stezo, katere zadnji dogodek se je ze koncal.
 function packGroupsForDay(dayGroups: PlanGroupItem[]): PositionedGroup[] {
   const sorted = [...dayGroups].sort((a, b) => a.startAt.localeCompare(b.startAt));
   const laneEndTimes: string[] = [];
-  const placed: (PlanGroupItem & { lane: number })[] = [];
+  const placed: (PlanGroupItem & { lane: number; effEndAt: string })[] = [];
 
   for (const g of sorted) {
+    const effEndAt = effectiveEndAt(g.startAt, g.endAt);
     let laneIndex = laneEndTimes.findIndex((endAt) => endAt <= g.startAt);
     if (laneIndex === -1) {
       laneIndex = laneEndTimes.length;
-      laneEndTimes.push(g.endAt);
+      laneEndTimes.push(effEndAt);
     } else {
-      laneEndTimes[laneIndex] = g.endAt;
+      laneEndTimes[laneIndex] = effEndAt;
     }
-    placed.push({ ...g, lane: laneIndex });
+    placed.push({ ...g, lane: laneIndex, effEndAt });
   }
 
   return placed.map((g) => {
-    const overlapping = placed.filter((other) => other.startAt < g.endAt && other.endAt > g.startAt);
+    const overlapping = placed.filter((other) => other.startAt < g.effEndAt && other.effEndAt > g.startAt);
     const laneCount = Math.max(...overlapping.map((o) => o.lane + 1), g.lane + 1);
     return { ...g, laneCount };
   });
@@ -350,7 +364,7 @@ export function PlanCalendar({
                     const clampedStart = Math.max(new Date(g.startAt).getTime(), visibleStart.getTime());
                     const clampedEnd = Math.min(new Date(g.endAt).getTime(), visibleEnd.getTime());
                     const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
-                    const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, 0.25);
+                    const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
                     const widthPct = 100 / g.laneCount;
                     const doneCount = g.tasks.filter((t) => t.workOrderId).length;
                     const installerText = g.expectedInstaller
