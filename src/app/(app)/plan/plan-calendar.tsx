@@ -379,109 +379,107 @@ export function PlanCalendar({
             </div>
           ))}
         </div>
-        <div className="max-h-[70vh] overflow-y-auto">
-          <div className={`relative grid ${gridColsClass}`} style={{ height: HOURS.length * PX_PER_HOUR }}>
-            <div className="relative">
-              {HOURS.map((h) => (
-                <div
-                  key={h}
-                  className="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500"
-                  style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
-                >
-                  {String(h).padStart(2, "0")}:00
-                </div>
-              ))}
-            </div>
-            {visibleDayIndices.map((dayIdx) => {
-              const day = days[dayIdx];
-              // Dnevno članstvo šteje cel dan (0h-24h), da nalog izven prikazanega okna (6h-18h) ne
-              // izgine iz koledarja -- samo vizualno se obreže na rob vidnega okna spodaj.
-              const dayStart = new Date(day);
-              dayStart.setHours(0, 0, 0, 0);
-              const dayEnd = new Date(dayStart);
-              dayEnd.setDate(dayEnd.getDate() + 1);
-              const dayGroups = visibleGroups.filter(
-                (g) => new Date(g.startAt) < dayEnd && new Date(g.endAt) > dayStart
-              );
-              const positioned = packGroupsForDay(dayGroups);
-              const visibleStart = new Date(day);
-              visibleStart.setHours(DAY_START_HOUR, 0, 0, 0);
-              const visibleEnd = new Date(day);
-              visibleEnd.setHours(DAY_END_HOUR, 0, 0, 0);
-              return (
-                <div
-                  key={dayIdx}
-                  onClick={(e) => handleDayColumnClick(e, dayIdx)}
-                  className={`relative border-l border-gray-100 dark:border-gray-800 ${canManagePlan ? "cursor-pointer" : ""}`}
-                >
-                  {HOURS.map((h) => (
-                    <div
-                      key={h}
-                      className="absolute left-0 right-0 border-t border-gray-100 dark:border-gray-800"
-                      style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
-                    />
-                  ))}
-                  {positioned.map((g) => {
-                    const clampedStart = Math.max(new Date(g.startAt).getTime(), visibleStart.getTime());
-                    const clampedEnd = Math.min(new Date(g.endAt).getTime(), visibleEnd.getTime());
-                    const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
-                    const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
-                    const widthPct = 100 / g.laneCount;
-                    const doneCount = g.tasks.filter((t) => t.workOrderId).length;
-                    const installerText = g.expectedInstaller
-                      ? g.expectedInstaller === "OSTALO"
-                        ? g.expectedInstallerOtherText || "Ostalo"
-                        : installerLabel(g.expectedInstaller)
-                      : null;
-                    return (
-                      <button
-                        key={g.id}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedGroupId(g.id);
-                        }}
-                        className="absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm"
-                        style={{
-                          top: topHours * PX_PER_HOUR,
-                          height: durationHours * PX_PER_HOUR - 2,
-                          left: `${g.lane * widthPct}%`,
-                          width: `calc(${widthPct}% - 2px)`,
-                          backgroundColor: groupColor(g.clientId),
-                        }}
-                        title={g.clientName}
-                      >
-                        <div className="truncate font-semibold">{g.clientName}</div>
-                        {installerText && (
-                          <div className="truncate">
-                            {installerText}
-                            {g.tasks.length > 0 ? ` · ${doneCount}/${g.tasks.length}` : ""}
-                          </div>
-                        )}
-                        {!installerText && g.tasks.length > 0 && (
-                          <div className="truncate">{doneCount}/{g.tasks.length}</div>
-                        )}
-                        {g.contact && <div className="truncate">Kontakt: {g.contact}</div>}
-                        {g.tasks.length > 0 ? (
-                          g.tasks.map((t) => (
-                            <div key={t.id}>
-                              <div className="truncate">
-                                {t.type ? `${taskTypeLabel(t.type)} ` : ""}
-                                {t.vehiclePlate}
-                              </div>
-                              {t.note && <div className="truncate">{t.note}</div>}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="truncate">brez nalogov</div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
+        <div className={`relative grid ${gridColsClass}`} style={{ height: HOURS.length * PX_PER_HOUR }}>
+          <div className="relative">
+            {HOURS.map((h) => (
+              <div
+                key={h}
+                className="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500"
+                style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
+              >
+                {String(h).padStart(2, "0")}:00
+              </div>
+            ))}
           </div>
+          {visibleDayIndices.map((dayIdx) => {
+            const day = days[dayIdx];
+            // Dnevno članstvo šteje cel dan (0h-24h), da nalog izven prikazanega okna (6h-18h) ne
+            // izgine iz koledarja -- samo vizualno se obreže na rob vidnega okna spodaj.
+            const dayStart = new Date(day);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            const dayGroups = visibleGroups.filter(
+              (g) => new Date(g.startAt) < dayEnd && new Date(g.endAt) > dayStart
+            );
+            const positioned = packGroupsForDay(dayGroups);
+            const visibleStart = new Date(day);
+            visibleStart.setHours(DAY_START_HOUR, 0, 0, 0);
+            const visibleEnd = new Date(day);
+            visibleEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+            return (
+              <div
+                key={dayIdx}
+                onClick={(e) => handleDayColumnClick(e, dayIdx)}
+                className={`relative border-l border-gray-100 dark:border-gray-800 ${canManagePlan ? "cursor-pointer" : ""}`}
+              >
+                {HOURS.map((h) => (
+                  <div
+                    key={h}
+                    className="absolute left-0 right-0 border-t border-gray-100 dark:border-gray-800"
+                    style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
+                  />
+                ))}
+                {positioned.map((g) => {
+                  const clampedStart = Math.max(new Date(g.startAt).getTime(), visibleStart.getTime());
+                  const clampedEnd = Math.min(new Date(g.endAt).getTime(), visibleEnd.getTime());
+                  const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
+                  const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
+                  const widthPct = 100 / g.laneCount;
+                  const doneCount = g.tasks.filter((t) => t.workOrderId).length;
+                  const installerText = g.expectedInstaller
+                    ? g.expectedInstaller === "OSTALO"
+                      ? g.expectedInstallerOtherText || "Ostalo"
+                      : installerLabel(g.expectedInstaller)
+                    : null;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedGroupId(g.id);
+                      }}
+                      className="absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm"
+                      style={{
+                        top: topHours * PX_PER_HOUR,
+                        height: durationHours * PX_PER_HOUR - 2,
+                        left: `${g.lane * widthPct}%`,
+                        width: `calc(${widthPct}% - 2px)`,
+                        backgroundColor: groupColor(g.clientId),
+                      }}
+                      title={g.clientName}
+                    >
+                      <div className="break-words font-semibold">{g.clientName}</div>
+                      {installerText && (
+                        <div className="break-words">
+                          {installerText}
+                          {g.tasks.length > 0 ? ` · ${doneCount}/${g.tasks.length}` : ""}
+                        </div>
+                      )}
+                      {!installerText && g.tasks.length > 0 && (
+                        <div className="break-words">{doneCount}/{g.tasks.length}</div>
+                      )}
+                      {g.contact && <div className="break-words">Kontakt: {g.contact}</div>}
+                      {g.tasks.length > 0 ? (
+                        g.tasks.map((t) => (
+                          <div key={t.id}>
+                            <div className="break-words">
+                              {t.type ? `${taskTypeLabel(t.type)} ` : ""}
+                              {t.vehiclePlate}
+                            </div>
+                            {t.note && <div className="break-words">{t.note}</div>}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="break-words">brez nalogov</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 
