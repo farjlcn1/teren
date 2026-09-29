@@ -183,6 +183,17 @@ export function PlanCalendar({
   const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
   const [calView, setCalView] = useState<"week" | "day">("week");
 
+  // Privzeti pogled ob prvem nalaganju: na telefonu (ozek zaslon) dan, na računalniku teden. Enako
+  // kot ThemeToggle najprej izriše SSR-varno privzeto vrednost ("week"), nato jo v učinku (samo na
+  // odjemalcu, samo enkrat ob priklopu) po potrebi popravi -- brez tega bi se strežniško in
+  // odjemalsko izrisano stanje razlikovala. Ker učinek nima odvisnosti, se ne sproži znova ob vsaki
+  // naslednji navigaciji po tednih/dnevih, zato ročna izbira uporabnika kasneje ni prepisana.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      setCalView("day");
+    }
+  }, []);
+
   // Dnevni pogled prikaže samo en dan -- izbrani dan je isti "teden" parameter, ki določa naloženi
   // teden (poljuben dan znotraj njega, ne nujno ponedeljek; startOfWeek na strežniku ga že pravilno
   // prevede v pravi teden), privzeto današnji, če parameter manjka. Steza/prekrivanje in
