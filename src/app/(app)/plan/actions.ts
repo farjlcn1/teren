@@ -21,6 +21,12 @@ const planGroupSchema = z.object({
   expectedInstallerOtherText: z.string().optional(),
 });
 
+const plannedTaskSchema = z.object({
+  vehiclePlate: z.string().trim().min(1, "Vnesi registrsko številko."),
+  type: z.union([z.enum(WORK_ORDER_TYPES), z.literal("")]).optional(),
+  note: z.string().optional(),
+});
+
 function parsePlanGroupInput(formData: FormData) {
   return planGroupSchema.safeParse({
     clientId: formData.get("clientId"),
@@ -39,6 +45,17 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
   const parsed = parsePlanGroupInput(formData);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki." };
+  }
+
+  let tasksInput: unknown;
+  try {
+    tasksInput = JSON.parse(String(formData.get("tasks") ?? "[]"));
+  } catch {
+    return { error: "Napaka pri branju nalogov." };
+  }
+  const tasksParsed = z.array(plannedTaskSchema).safeParse(tasksInput);
+  if (!tasksParsed.success) {
+    return { error: tasksParsed.error.issues[0]?.message ?? "Neveljavni nalogi." };
   }
 
   const startAt = new Date(parsed.data.startAt);
@@ -68,6 +85,10 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
       expectedInstaller,
       expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
       createdById: user.id,
+      tasks:
+        tasksParsed.data.length > 0
+          ? { create: tasksParsed.data.map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type || null, note: t.note || null })) }
+          : undefined,
     },
   });
 
@@ -148,12 +169,6 @@ export async function deletePlanGroup(planGroupId: string): Promise<{ error?: st
   await prisma.planGroup.delete({ where: { id: planGroupId } });
   revalidatePath("/plan");
 }
-
-const plannedTaskSchema = z.object({
-  vehiclePlate: z.string().trim().min(1, "Vnesi registrsko številko."),
-  type: z.union([z.enum(WORK_ORDER_TYPES), z.literal("")]).optional(),
-  note: z.string().optional(),
-});
 
 export async function addPlannedTask(
   planGroupId: string,

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useActionState } from "react";
+import { useEffect, useRef, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "@/components/client-combobox";
+import { PlateCombobox } from "@/components/plate-combobox";
 import { DateTimeInput } from "@/components/date-input";
 import { createPlanGroup } from "./actions";
 import { GroupPopup } from "./group-popup";
@@ -172,9 +173,23 @@ export function PlanCalendar({
   const [startAtIso, setStartAtIso] = useState("");
   const [endAtIso, setEndAtIso] = useState("");
   const [newGroupInstaller, setNewGroupInstaller] = useState("");
+  const [newGroupTasks, setNewGroupTasks] = useState<
+    { id: number; vehiclePlate: string; type: string; note: string }[]
+  >([]);
+  const nextTaskRowId = useRef(0);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(createPlanGroup, undefined);
   const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
+  const [calView, setCalView] = useState<"week" | "day">("week");
+
+  // Dnevni pogled prikaže samo en dan -- privzeto današnjega, če je viden znotraj tega tedna, sicer
+  // ponedeljek. Steza/prekrivanje in klik-za-ustvarjanje ostaneta nespremenjena, saj vedno delata z
+  // resničnim indeksom dneva v `days`, ne z indeksom znotraj prikazanega podnabora.
+  const todayIndexInWeek = days.findIndex((d) => localDateStr(d) === localDateStr(new Date()));
+  const dayViewIndex = todayIndexInWeek >= 0 ? todayIndexInWeek : 0;
+  const visibleDayIndices = calView === "day" ? [dayViewIndex] : [0, 1, 2, 3, 4, 5, 6];
+  const gridColsClass =
+    calView === "day" ? "grid-cols-[112px_minmax(0,1fr)]" : "grid-cols-[112px_repeat(7,minmax(0,1fr))]";
 
   // Nikoli zamrznjena kopija -- izbrana skupina se sveže poišče iz `groups` ob vsakem renderju, da
   // odprt pojavni pano takoj odraža nov nalog po revalidatePath("/plan") (npr. po addPlannedTask).
@@ -209,8 +224,22 @@ export function PlanCalendar({
     setStartAtIso(startDefault ? localDateTimeToIso(startDefault) : "");
     setEndAtIso("");
     setNewGroupInstaller("");
+    setNewGroupTasks([]);
     setModalKey((k) => k + 1);
     setModalOpen(true);
+  }
+
+  function addTaskRow() {
+    nextTaskRowId.current += 1;
+    setNewGroupTasks((prev) => [...prev, { id: nextTaskRowId.current, vehiclePlate: "", type: "", note: "" }]);
+  }
+
+  function updateTaskRow(id: number, patch: Partial<{ vehiclePlate: string; type: string; note: string }>) {
+    setNewGroupTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function removeTaskRow(id: number) {
+    setNewGroupTasks((prev) => prev.filter((t) => t.id !== id));
   }
 
   // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika (zaokroženo na 30
@@ -308,19 +337,26 @@ export function PlanCalendar({
       </div>
 
       <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
-        <div className="grid grid-cols-[112px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-          <div />
-          {days.map((d, i) => (
+        <div className={`grid ${gridColsClass} border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800`}>
+          <button
+            type="button"
+            onClick={() => setCalView((v) => (v === "week" ? "day" : "week"))}
+            className="text-xs font-medium text-blue-600 hover:bg-gray-100 dark:text-blue-400 dark:hover:bg-gray-700"
+          >
+            {calView === "week" ? "Dan" : "Teden"}
+          </button>
+          {visibleDayIndices.map((i) => (
             <div
               key={i}
               className="border-l border-gray-200 px-2 py-2 text-center text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300"
             >
-              {DAY_LABELS[i]} <span className="text-gray-400 dark:text-gray-500">{d.getDate()}.{d.getMonth() + 1}.</span>
+              {DAY_LABELS[i]}{" "}
+              <span className="text-gray-400 dark:text-gray-500">{days[i].getDate()}.{days[i].getMonth() + 1}.</span>
             </div>
           ))}
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
-          <div className="relative grid grid-cols-[112px_repeat(7,minmax(0,1fr))]" style={{ height: HOURS.length * PX_PER_HOUR }}>
+          <div className={`relative grid ${gridColsClass}`} style={{ height: HOURS.length * PX_PER_HOUR }}>
             <div className="relative">
               {HOURS.map((h) => (
                 <div
@@ -332,7 +368,8 @@ export function PlanCalendar({
                 </div>
               ))}
             </div>
-            {days.map((day, dayIdx) => {
+            {visibleDayIndices.map((dayIdx) => {
+              const day = days[dayIdx];
               // Dnevno članstvo šteje cel dan (0h-24h), da nalog izven prikazanega okna (6h-18h) ne
               // izgine iz koledarja -- samo vizualno se obreže na rob vidnega okna spodaj.
               const dayStart = new Date(day);
@@ -400,6 +437,7 @@ export function PlanCalendar({
                         {!installerText && g.tasks.length > 0 && (
                           <div className="truncate">{doneCount}/{g.tasks.length}</div>
                         )}
+                        {g.contact && <div className="truncate">Kontakt: {g.contact}</div>}
                         {g.tasks.length > 0 ? (
                           g.tasks.map((t) => (
                             <div key={t.id}>
@@ -442,7 +480,7 @@ export function PlanCalendar({
           <form
             action={formAction}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md space-y-3 rounded-md border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+            className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-md border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
           >
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Nov dogodek</h3>
             <div>
@@ -510,6 +548,65 @@ export function PlanCalendar({
                   />
                 )}
               </div>
+            </div>
+            <div className="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nalogi (neobvezno)</span>
+                <button
+                  type="button"
+                  onClick={addTaskRow}
+                  className="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 dark:border-gray-600 dark:text-gray-300"
+                >
+                  + Dodaj nalog
+                </button>
+              </div>
+              {newGroupTasks.map((row) => (
+                <div key={row.id} className="flex items-start gap-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                  <div className="flex-1 space-y-2">
+                    <PlateCombobox
+                      plates={vehiclePlates}
+                      value={row.vehiclePlate}
+                      onChange={(v) => updateTaskRow(row.id, { vehiclePlate: v })}
+                      className={fieldClass()}
+                    />
+                    <select
+                      value={row.type}
+                      onChange={(e) => updateTaskRow(row.id, { type: e.target.value })}
+                      className={`${fieldClass()} mt-0`}
+                    >
+                      <option value="">— tip naloga (neobvezno) —</option>
+                      {TASK_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Opomba (neobvezno)"
+                      value={row.note}
+                      onChange={(e) => updateTaskRow(row.id, { note: e.target.value })}
+                      className={`${fieldClass()} mt-0`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeTaskRow(row.id)}
+                    className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 dark:border-red-800 dark:text-red-400"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <input
+                type="hidden"
+                name="tasks"
+                value={JSON.stringify(
+                  newGroupTasks
+                    .filter((t) => t.vehiclePlate.trim())
+                    .map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type, note: t.note }))
+                )}
+              />
             </div>
             {state?.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
             <div className="flex justify-end gap-2">
