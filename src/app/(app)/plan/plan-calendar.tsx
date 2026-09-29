@@ -229,6 +229,18 @@ export function PlanCalendar({
     return PALETTE[hashToIndex(clientId, PALETTE.length)];
   }
 
+  // Simon in Vito imata vsak svojo stalno barvo (namesto barve glede na stranko), da ju je na
+  // koledarju mogoče takoj razločiti ne glede na to, za katero stranko delata -- svetlejši odtenek
+  // pomeni, da so vsi nalogi v dogodku že opravljeni, temnejši, da je vsaj eden še odprt (ali da
+  // dogodek še nima nalogov). Za ostale/nedoločene monterje ostane barva po stranki nespremenjena.
+  function installerBlockColor(installer: string | null, allDone: boolean): string | null {
+    // Namenoma izven zgornjega PALETTE polja (barve po stranki) -- sicer bi se lahko po naključju
+    // ujemala z barvo neke stranke pri drugem monterju in bi bila razločljivost spet izgubljena.
+    if (installer === "SIMON") return allDone ? "#38bdf8" : "#0284c7";
+    if (installer === "VITO") return allDone ? "#fb923c" : "#ea580c";
+    return null;
+  }
+
   // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času; endDateDefault: samo "YYYY-MM-DD" (isti dan
   // kot začetek, brez ure -- trajanje uporabnik vedno vnese ročno). Oba prazna za ročni vnos (gumb
   // "Nov dogodek"), sicer predizpolnjena iz kliknjenega kvadratka v koledarju. lockDate: true, ko je
@@ -445,6 +457,7 @@ export function PlanCalendar({
                   const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
                   const widthPct = 100 / g.laneCount;
                   const doneCount = g.tasks.filter((t) => t.workOrderId).length;
+                  const allDone = g.tasks.length > 0 && doneCount === g.tasks.length;
                   const installerText = g.expectedInstaller
                     ? g.expectedInstaller === "OSTALO"
                       ? g.expectedInstallerOtherText || "Ostalo"
@@ -464,7 +477,7 @@ export function PlanCalendar({
                         height: durationHours * PX_PER_HOUR - 2,
                         left: `${g.lane * widthPct}%`,
                         width: `calc(${widthPct}% - 2px)`,
-                        backgroundColor: groupColor(g.clientId),
+                        backgroundColor: installerBlockColor(g.expectedInstaller, allDone) ?? groupColor(g.clientId),
                       }}
                       title={g.clientName}
                     >
