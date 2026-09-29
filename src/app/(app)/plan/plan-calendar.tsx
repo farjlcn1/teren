@@ -543,11 +543,10 @@ export function PlanCalendar({
                 />
               </label>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Do
+                Do (neobvezno, privzeto +1h)
                 <DateTimeInput
                   key={`end-${modalKey}`}
                   withTime
-                  required
                   lockDate={modalLockDate}
                   defaultValue={modalEndDateDefault}
                   onValueChange={(v) => setEndAtIso(localDateTimeToIso(v))}
@@ -659,7 +658,7 @@ export function PlanCalendar({
               </button>
               <button
                 type="submit"
-                disabled={pending || !startAtIso || !endAtIso}
+                disabled={pending || !startAtIso}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {pending ? "Shranjujem …" : "Ustvari"}

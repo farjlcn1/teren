@@ -14,7 +14,9 @@ export type PlanActionState = { error?: string; success?: boolean; groupId?: str
 const planGroupSchema = z.object({
   clientId: z.string().min(1, "Izberi stranko."),
   startAt: z.string().min(1, "Vnesi začetek."),
-  endAt: z.string().min(1, "Vnesi konec."),
+  // Neobvezno pri kreiranju (createPlanGroup privzame 1h trajanje) -- updatePlanGroup ob manjkajočem
+  // koncu ob ureji vseeno vrne napako, glej tam.
+  endAt: z.string().optional(),
   note: z.string().optional(),
   contact: z.string().optional(),
   expectedInstaller: z.union([z.enum(INSTALLER_NAMES), z.literal("")]).optional(),
@@ -59,12 +61,23 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
   }
 
   const startAt = new Date(parsed.data.startAt);
-  const endAt = new Date(parsed.data.endAt);
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+  if (Number.isNaN(startAt.getTime())) {
     return { error: "Neveljaven datum/čas." };
   }
-  if (endAt <= startAt) {
-    return { error: "Konec mora biti po začetku." };
+
+  // Konec je neobvezen -- brez njega dogodek privzeto traja 1h, enako kot nalog ustvarjen izven
+  // plana (glej createWorkOrder v nalogi/nov/actions.ts).
+  let endAt: Date;
+  if (parsed.data.endAt) {
+    endAt = new Date(parsed.data.endAt);
+    if (Number.isNaN(endAt.getTime())) {
+      return { error: "Neveljaven datum/čas." };
+    }
+    if (endAt <= startAt) {
+      return { error: "Konec mora biti po začetku." };
+    }
+  } else {
+    endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
   }
 
   const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
@@ -117,6 +130,12 @@ export async function updatePlanGroup(
   const hasCompletedTask = existing.tasks.some((t) => t.workOrderId);
   if (hasCompletedTask && parsed.data.clientId !== existing.clientId) {
     return { error: "Stranke ni mogoče spremeniti, ker je bil vsaj en nalog v tej skupini že opravljen." };
+  }
+
+  // Pri urejanju (za razliko od kreiranja) konec ostane obvezen -- samodejno 1h trajanje velja samo
+  // za nov dogodek brez izbranega konca.
+  if (!parsed.data.endAt) {
+    return { error: "Vnesi konec." };
   }
 
   const startAt = new Date(parsed.data.startAt);
