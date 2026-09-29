@@ -196,7 +196,7 @@ export function PlanCalendar({
   const dayViewIndex = dayViewIndexRaw >= 0 ? dayViewIndexRaw : 0;
   const visibleDayIndices = calView === "day" ? [dayViewIndex] : [0, 1, 2, 3, 4, 5, 6];
   const gridColsClass =
-    calView === "day" ? "grid-cols-[112px_minmax(0,1fr)]" : "grid-cols-[112px_repeat(7,minmax(0,1fr))]";
+    calView === "day" ? "grid-cols-[67px_minmax(0,1fr)]" : "grid-cols-[67px_repeat(7,minmax(0,1fr))]";
 
   // Nikoli zamrznjena kopija -- izbrana skupina se sveže poišče iz `groups` ob vsakem renderju, da
   // odprt pojavni pano takoj odraža nov nalog po revalidatePath("/plan") (npr. po addPlannedTask).
