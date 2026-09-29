@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useActionState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ClientCombobox } from "@/components/client-combobox";
 import { PlateCombobox } from "@/components/plate-combobox";
 import { DateTimeInput } from "@/components/date-input";
@@ -157,6 +157,7 @@ export function PlanCalendar({
   canManagePlan: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const weekStart = new Date(weekStartIso);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -182,11 +183,17 @@ export function PlanCalendar({
   const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
   const [calView, setCalView] = useState<"week" | "day">("week");
 
-  // Dnevni pogled prikaže samo en dan -- privzeto današnjega, če je viden znotraj tega tedna, sicer
-  // ponedeljek. Steza/prekrivanje in klik-za-ustvarjanje ostaneta nespremenjena, saj vedno delata z
-  // resničnim indeksom dneva v `days`, ne z indeksom znotraj prikazanega podnabora.
-  const todayIndexInWeek = days.findIndex((d) => localDateStr(d) === localDateStr(new Date()));
-  const dayViewIndex = todayIndexInWeek >= 0 ? todayIndexInWeek : 0;
+  // Dnevni pogled prikaže samo en dan -- izbrani dan je isti "teden" parameter, ki določa naloženi
+  // teden (poljuben dan znotraj njega, ne nujno ponedeljek; startOfWeek na strežniku ga že pravilno
+  // prevede v pravi teden), privzeto današnji, če parameter manjka. Steza/prekrivanje in
+  // klik-za-ustvarjanje ostaneta nespremenjena, saj vedno delata z resničnim indeksom dneva v
+  // `days`, ne z indeksom znotraj prikazanega podnabora.
+  const requestedDateStr = searchParams.get("teden");
+  const selectedDay = requestedDateStr && !Number.isNaN(new Date(requestedDateStr).getTime())
+    ? new Date(requestedDateStr)
+    : new Date();
+  const dayViewIndexRaw = days.findIndex((d) => localDateStr(d) === localDateStr(selectedDay));
+  const dayViewIndex = dayViewIndexRaw >= 0 ? dayViewIndexRaw : 0;
   const visibleDayIndices = calView === "day" ? [dayViewIndex] : [0, 1, 2, 3, 4, 5, 6];
   const gridColsClass =
     calView === "day" ? "grid-cols-[112px_minmax(0,1fr)]" : "grid-cols-[112px_repeat(7,minmax(0,1fr))]";
@@ -275,16 +282,27 @@ export function PlanCalendar({
     router.push(`/plan?${params.toString()}`);
   }
 
+  // Premik za en dan (dnevni pogled) -- za razliko od goToWeek cilj ni nujno ponedeljek; strežniška
+  // startOfWeek() ga vseeno pravilno prevede v teden, ki ta dan vsebuje, zato tedenski podatki ostanejo
+  // pravilni tudi ob prehodu čez mejo tedna.
+  function goToDay(offsetDays: number) {
+    const d = new Date(selectedDay);
+    d.setDate(d.getDate() + offsetDays);
+    const params = new URLSearchParams(window.location.search);
+    params.set("teden", localDateStr(d));
+    router.push(`/plan?${params.toString()}`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => goToWeek(-7)}
+            onClick={() => (calView === "day" ? goToDay(-1) : goToWeek(-7))}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
           >
-            ‹ Prejšnji teden
+            {calView === "day" ? "‹ Prejšnji dan" : "‹ Prejšnji teden"}
           </button>
           <button
             type="button"
@@ -295,14 +313,20 @@ export function PlanCalendar({
           </button>
           <button
             type="button"
-            onClick={() => goToWeek(7)}
+            onClick={() => (calView === "day" ? goToDay(1) : goToWeek(7))}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
           >
-            Naslednji teden ›
+            {calView === "day" ? "Naslednji dan ›" : "Naslednji teden ›"}
           </button>
           <span className="ml-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            {days[0].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit" })} –{" "}
-            {days[6].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })}
+            {calView === "day"
+              ? days[dayViewIndex].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })
+              : (
+                <>
+                  {days[0].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit" })} –{" "}
+                  {days[6].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                </>
+              )}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
