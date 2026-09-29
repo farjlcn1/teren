@@ -267,7 +267,14 @@ export function PlanCalendar({
     if (!canManagePlan) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
-    const totalMinutes = Math.max(0, Math.min(23 * 60 + 30, Math.round(((offsetY / PX_PER_HOUR) * 60) / 30) * 30));
+    // offsetY je 0 na vrhu VIDNEGA okna (DAY_START_HOUR), ne na polnoči -- brez prištetega
+    // DAY_START_HOUR*60 bi klik npr. na vrstico "14:00" napačno nastavil uro na 08:00.
+    const maxMinutesFromStart = (DAY_END_HOUR - DAY_START_HOUR) * 60 - 30;
+    const minutesFromStart = Math.max(
+      0,
+      Math.min(maxMinutesFromStart, Math.round(((offsetY / PX_PER_HOUR) * 60) / 30) * 30)
+    );
+    const totalMinutes = DAY_START_HOUR * 60 + minutesFromStart;
     const hour = Math.floor(totalMinutes / 60);
     const minute = totalMinutes % 60;
     const day = days[dayIdx];
