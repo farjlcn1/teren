@@ -293,8 +293,8 @@ export function PlanCalendar({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
-        <div className="grid grid-cols-[112px_repeat(7,304px)] border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+      <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+        <div className="grid grid-cols-[112px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
           <div />
           {days.map((d, i) => (
             <div
@@ -306,7 +306,7 @@ export function PlanCalendar({
           ))}
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
-          <div className="relative grid grid-cols-[112px_repeat(7,304px)]" style={{ height: HOURS.length * PX_PER_HOUR }}>
+          <div className="relative grid grid-cols-[112px_repeat(7,minmax(0,1fr))]" style={{ height: HOURS.length * PX_PER_HOUR }}>
             <div className="relative">
               {HOURS.map((h) => (
                 <div

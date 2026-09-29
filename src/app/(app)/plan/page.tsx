@@ -38,33 +38,36 @@ export default async function PlanPage({
   ]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Plan</h1>
-
-      <PlanCalendar
-        weekStartIso={weekStart.toISOString()}
-        clients={clients}
-        vehiclePlates={vehicles.map((v) => v.plate)}
-        groups={groups.map((g) => ({
-          id: g.id,
-          clientId: g.clientId,
-          clientName: g.client.name,
-          startAt: g.startAt.toISOString(),
-          endAt: g.endAt.toISOString(),
-          note: g.note,
-          contact: g.contact,
-          expectedInstaller: g.expectedInstaller,
-          expectedInstallerOtherText: g.expectedInstallerOtherText,
-          tasks: g.tasks.map((t) => ({
-            id: t.id,
-            vehiclePlate: t.vehiclePlate,
-            type: t.type,
-            note: t.note,
-            workOrderId: t.workOrderId,
-          })),
-        }))}
-        canManagePlan={user.canManagePlan}
-      />
+    // Zavihek Plan potrebuje širšo tabelo kot ostale strani -- ta ovojnica prebije čez skupno
+    // max-w-[1600px] omejitev iz layout.tsx nazaj na resnično širino okna, znotraj nje pa se
+    // vsebina znova centrira na svojo (10% širšo) mejo.
+    <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw]">
+      <div className="mx-auto max-w-[1760px] px-4">
+        <PlanCalendar
+          weekStartIso={weekStart.toISOString()}
+          clients={clients}
+          vehiclePlates={vehicles.map((v) => v.plate)}
+          groups={groups.map((g) => ({
+            id: g.id,
+            clientId: g.clientId,
+            clientName: g.client.name,
+            startAt: g.startAt.toISOString(),
+            endAt: g.endAt.toISOString(),
+            note: g.note,
+            contact: g.contact,
+            expectedInstaller: g.expectedInstaller,
+            expectedInstallerOtherText: g.expectedInstallerOtherText,
+            tasks: g.tasks.map((t) => ({
+              id: t.id,
+              vehiclePlate: t.vehiclePlate,
+              type: t.type,
+              note: t.note,
+              workOrderId: t.workOrderId,
+            })),
+          }))}
+          canManagePlan={user.canManagePlan}
+        />
+      </div>
     </div>
   );
 }
