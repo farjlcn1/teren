@@ -189,6 +189,19 @@ export function PlanCalendar({
   const [draggingGroup, setDraggingGroup] = useState<{ id: string; grabOffsetY: number; durationMs: number } | null>(
     null
   );
+  // Ob raztegovanju roba zapomni ID skupine, kateri rob (top=začetek, bottom=konec) se vleče, dan
+  // stolpca (za pretvorbo Y-položaja v čas), vrh tega stolpca ob prijemu (zajet enkrat, da med
+  // vlečenjem ni treba znova brati DOM-a) ter živi predogled začetka/konca, ki se med vlečenjem
+  // sproti posodablja in šele ob spustu pošlje na strežnik.
+  const [resizingGroup, setResizingGroup] = useState<{
+    id: string;
+    dayIdx: number;
+    edge: "top" | "bottom";
+    columnTop: number;
+    startAt: Date;
+    endAt: Date;
+  } | null>(null);
+  const resizingGroupRef = useRef<typeof resizingGroup>(null);
 
   // Privzeti pogled ob prvem nalaganju: na telefonu (ozek zaslon) dan, na računalniku teden. Enako
   // kot ThemeToggle najprej izriše SSR-varno privzeto vrednost ("week"), nato jo v učinku (samo na
@@ -341,6 +354,83 @@ export function PlanCalendar({
     });
   }
 
+  // Prime za VLEČENJE ROBA (raztezanje/krčenje) -- ločeno od handleGroupDragStart (premik celega
+  // dogodka), zato ne uporablja HTML5 drag-and-drop (ki ne ponuja gladkega sprotnega predogleda),
+  // temveč navadne miškine dogodke na oknu. draggable={false} na ročici (glej JSX spodaj) prepreči,
+  // da bi ista poteza po nesreči sprožila tudi premik celega bloka.
+  function handleResizeMouseDown(
+    e: React.MouseEvent<HTMLDivElement>,
+    g: PlanGroupItem,
+    dayIdx: number,
+    edge: "top" | "bottom"
+  ) {
+    if (!canManagePlan) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const columnEl = (e.currentTarget as HTMLElement).closest("[data-daycolumn]") as HTMLElement | null;
+    const next = {
+      id: g.id,
+      dayIdx,
+      edge,
+      columnTop: columnEl?.getBoundingClientRect().top ?? 0,
+      startAt: new Date(g.startAt),
+      endAt: new Date(g.endAt),
+    };
+    resizingGroupRef.current = next;
+    setResizingGroup(next);
+  }
+
+  // Med vlečenjem roba posluša miškino gibanje/spust na celem oknu (ne le nad kvadratkom), ker
+  // kazalec med hitrim vlečenjem zlahka zaide izven prvotnega elementa. Najmanjše trajanje 30 min
+  // prepreči, da bi vlečeni rob "prehitel" nasprotnega in obrnil vrstni red začetka/konca.
+  useEffect(() => {
+    if (!resizingGroup) return;
+
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    function handleMouseMove(e: MouseEvent) {
+      setResizingGroup((prev) => {
+        if (!prev) return prev;
+        const dragged = dateAtDayAndOffset(days[prev.dayIdx], e.clientY - prev.columnTop);
+        let next;
+        if (prev.edge === "top") {
+          const maxStart = new Date(prev.endAt.getTime() - 30 * 60 * 1000);
+          next = { ...prev, startAt: dragged.getTime() > maxStart.getTime() ? maxStart : dragged };
+        } else {
+          const minEnd = new Date(prev.startAt.getTime() + 30 * 60 * 1000);
+          next = { ...prev, endAt: dragged.getTime() < minEnd.getTime() ? minEnd : dragged };
+        }
+        // Zabeleži v ref (ne le v stanje) -- handleMouseUp spodaj bere iz refa, ne iz stanja, ker
+        // React v razvojnem načinu (StrictMode) funkcije za posodobitev stanja pokliče dvakrat; če bi
+        // sranski učinek (movePlanGroup) živel znotraj take funkcije, bi se dvakrat sprožil tudi on.
+        resizingGroupRef.current = next;
+        return next;
+      });
+    }
+
+    function handleMouseUp() {
+      const current = resizingGroupRef.current;
+      if (current) {
+        const { id, startAt, endAt } = current;
+        startTransition(async () => {
+          const result = await movePlanGroup(id, startAt.toISOString(), endAt.toISOString());
+          if (result?.error) window.alert(result.error);
+        });
+      }
+      resizingGroupRef.current = null;
+      setResizingGroup(null);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizingGroup?.id]);
+
   function goToWeek(offsetDays: number) {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + offsetDays);
@@ -483,6 +573,7 @@ export function PlanCalendar({
             return (
               <div
                 key={dayIdx}
+                data-daycolumn
                 onClick={(e) => handleDayColumnClick(e, dayIdx)}
                 onDragOver={(e) => {
                   if (draggingGroup) e.preventDefault();
@@ -498,8 +589,14 @@ export function PlanCalendar({
                   />
                 ))}
                 {positioned.map((g) => {
-                  const clampedStart = Math.max(new Date(g.startAt).getTime(), visibleStart.getTime());
-                  const clampedEnd = Math.min(new Date(g.endAt).getTime(), visibleEnd.getTime());
+                  // Med raztezanjem roba se položaj/višina računata iz živega predogleda
+                  // (resizingGroup), ne iz shranjenih g.startAt/g.endAt, da se blok na zaslonu
+                  // spreminja sproti, še preden je premik potrjen na strežniku.
+                  const isResizing = resizingGroup?.id === g.id;
+                  const liveStartMs = isResizing ? resizingGroup.startAt.getTime() : new Date(g.startAt).getTime();
+                  const liveEndMs = isResizing ? resizingGroup.endAt.getTime() : new Date(g.endAt).getTime();
+                  const clampedStart = Math.max(liveStartMs, visibleStart.getTime());
+                  const clampedEnd = Math.min(liveEndMs, visibleEnd.getTime());
                   const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
                   const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
                   const widthPct = 100 / g.laneCount;
@@ -538,7 +635,7 @@ export function PlanCalendar({
                           njih ga ni, pri delnem napredku je širok toliko odstotkov, pri vseh
                           opravljenih pa čez celo širino. */}
                       <div
-                        className="absolute bottom-0 left-0 h-[6px] bg-green-500"
+                        className="absolute bottom-0 left-0 h-[6px] bg-green-500 pointer-events-none"
                         style={{ width: `${donePct}%` }}
                       />
                       <div className="break-words font-semibold">{g.clientName}</div>
@@ -564,6 +661,25 @@ export function PlanCalendar({
                         ))
                       ) : (
                         <div className="break-words">brez nalogov</div>
+                      )}
+                      {canManagePlan && (
+                        <>
+                          {/* Ročici na zgornjem/spodnjem robu za raztezanje/krčenje dogodka --
+                              draggable={false} prepreči, da bi vlečenje ročice po nesreči sprožilo
+                              premik celega bloka (ta je draggable prek starševskega gumba). */}
+                          <div
+                            className="absolute inset-x-0 top-0 h-[6px] cursor-ns-resize"
+                            draggable={false}
+                            onMouseDown={(e) => handleResizeMouseDown(e, g, dayIdx, "top")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div
+                            className="absolute inset-x-0 bottom-0 h-[6px] cursor-ns-resize"
+                            draggable={false}
+                            onMouseDown={(e) => handleResizeMouseDown(e, g, dayIdx, "bottom")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </>
                       )}
                     </button>
                   );
