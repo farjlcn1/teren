@@ -237,7 +237,7 @@ export function PlanCalendar({
     // Namenoma izven zgornjega PALETTE polja (barve po stranki) -- sicer bi se lahko po naključju
     // ujemala z barvo neke stranke pri drugem monterju in bi bila razločljivost spet izgubljena.
     if (installer === "SIMON") return allDone ? "#38bdf8" : "#0284c7";
-    if (installer === "VITO") return allDone ? "#fb923c" : "#ea580c";
+    if (installer === "VITO") return allDone ? "#a78bfa" : "#7c3aed";
     return null;
   }
 
