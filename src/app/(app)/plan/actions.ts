@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
-import type { InstallerName } from "@/generated/prisma/client";
+import type { InstallerName, Prisma } from "@/generated/prisma/client";
 
 const INSTALLER_NAMES = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"] as const;
 const WORK_ORDER_TYPES = ["MONTAZA", "DEMONTAZA", "INTERVENCIJA", "PREMONTAZA", "OSTALO"] as const;
@@ -42,30 +42,44 @@ function parsePlanGroupInput(formData: FormData) {
 }
 
 // Isti monter (po imenu; pri "Ostalo" tudi po prostem besedilu, ker gre lahko za različne ljudi) ne
-// sme imeti dveh časovno prekrivajočih se dogodkov -- brez tega bi lahko dispečer po nesreči
-// razporedil isto osebo na dve mesti hkrati. Brez izbranega monterja preverjanje odpade, saj ni s
-// čim preveriti prekrivanja.
-async function findInstallerOverlapError(
+// sme imeti dveh časovno prekrivajočih se dogodkov. Namesto da bi ustvarjanje/premik zato zavrnili,
+// prekrivajoč dogodek preprosto zamakne naprej -- tik za konec pravkar postavljenega/premaknjenega
+// dogodka -- in v zanki (z osveženim "zasedenim" oknom) tudi vse naslednje, ki bi jih ta zamik spet
+// prekril, dokler veriga ne pristane na prostem terminu. Brez izbranega monterja se ne zgodi nič,
+// saj ni s čim preveriti prekrivanja.
+async function pushOverlappingInstallerEvents(
+  tx: Prisma.TransactionClient,
   installer: InstallerName | null,
   otherText: string | null,
   startAt: Date,
   endAt: Date,
   excludeId?: string
-): Promise<string | null> {
-  if (!installer) return null;
+): Promise<void> {
+  if (!installer) return;
 
-  const conflict = await prisma.planGroup.findFirst({
-    where: {
-      expectedInstaller: installer,
-      ...(installer === "OSTALO" ? { expectedInstallerOtherText: otherText } : {}),
-      startAt: { lt: endAt },
-      endAt: { gt: startAt },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-    select: { id: true },
-  });
+  let cursorStart = startAt;
+  let cursorEnd = endAt;
+  const shiftedIds = new Set<string>(excludeId ? [excludeId] : []);
 
-  return conflict ? "Izbrani monter ima v tem času že drug dogodek." : null;
+  for (let i = 0; i < 500; i++) {
+    const conflict = await tx.planGroup.findFirst({
+      where: {
+        expectedInstaller: installer,
+        ...(installer === "OSTALO" ? { expectedInstallerOtherText: otherText } : {}),
+        startAt: { lt: cursorEnd },
+        endAt: { gt: cursorStart },
+        id: { notIn: Array.from(shiftedIds) },
+      },
+      orderBy: { startAt: "asc" },
+    });
+    if (!conflict) return;
+
+    const duration = conflict.endAt.getTime() - conflict.startAt.getTime();
+    cursorStart = cursorEnd;
+    cursorEnd = new Date(cursorStart.getTime() + duration);
+    await tx.planGroup.update({ where: { id: conflict.id }, data: { startAt: cursorStart, endAt: cursorEnd } });
+    shiftedIds.add(conflict.id);
+  }
 }
 
 export async function createPlanGroup(_prevState: PlanActionState, formData: FormData): Promise<PlanActionState> {
@@ -115,29 +129,25 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
   const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
   if (!client) return { error: "Stranka ne obstaja." };
 
-  const overlapError = await findInstallerOverlapError(
-    expectedInstaller,
-    expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
-    startAt,
-    endAt
-  );
-  if (overlapError) return { error: overlapError };
-
-  const group = await prisma.planGroup.create({
-    data: {
-      clientId: client.id,
-      startAt,
-      endAt,
-      note: parsed.data.note || null,
-      contact: parsed.data.contact || null,
-      expectedInstaller,
-      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
-      createdById: user.id,
-      tasks:
-        tasksParsed.data.length > 0
-          ? { create: tasksParsed.data.map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type || null, note: t.note || null })) }
-          : undefined,
-    },
+  const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;
+  const group = await prisma.$transaction(async (tx) => {
+    await pushOverlappingInstallerEvents(tx, expectedInstaller, otherTextForCheck, startAt, endAt);
+    return tx.planGroup.create({
+      data: {
+        clientId: client.id,
+        startAt,
+        endAt,
+        note: parsed.data.note || null,
+        contact: parsed.data.contact || null,
+        expectedInstaller,
+        expectedInstallerOtherText: otherTextForCheck,
+        createdById: user.id,
+        tasks:
+          tasksParsed.data.length > 0
+            ? { create: tasksParsed.data.map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type || null, note: t.note || null })) }
+            : undefined,
+      },
+    });
   });
 
   revalidatePath("/plan");
@@ -190,26 +200,21 @@ export async function updatePlanGroup(
   const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
   if (!client) return { error: "Stranka ne obstaja." };
 
-  const overlapError = await findInstallerOverlapError(
-    expectedInstaller,
-    expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
-    startAt,
-    endAt,
-    planGroupId
-  );
-  if (overlapError) return { error: overlapError };
-
-  await prisma.planGroup.update({
-    where: { id: planGroupId },
-    data: {
-      clientId: client.id,
-      startAt,
-      endAt,
-      note: parsed.data.note || null,
-      contact: parsed.data.contact || null,
-      expectedInstaller,
-      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null,
-    },
+  const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;
+  await prisma.$transaction(async (tx) => {
+    await pushOverlappingInstallerEvents(tx, expectedInstaller, otherTextForCheck, startAt, endAt, planGroupId);
+    await tx.planGroup.update({
+      where: { id: planGroupId },
+      data: {
+        clientId: client.id,
+        startAt,
+        endAt,
+        note: parsed.data.note || null,
+        contact: parsed.data.contact || null,
+        expectedInstaller,
+        expectedInstallerOtherText: otherTextForCheck,
+      },
+    });
   });
 
   revalidatePath("/plan");
@@ -238,16 +243,17 @@ export async function movePlanGroup(
   const existing = await prisma.planGroup.findUnique({ where: { id: planGroupId } });
   if (!existing) return { error: "Dogodek ne obstaja." };
 
-  const overlapError = await findInstallerOverlapError(
-    existing.expectedInstaller,
-    existing.expectedInstallerOtherText,
-    startAt,
-    endAt,
-    planGroupId
-  );
-  if (overlapError) return { error: overlapError };
-
-  await prisma.planGroup.update({ where: { id: planGroupId }, data: { startAt, endAt } });
+  await prisma.$transaction(async (tx) => {
+    await pushOverlappingInstallerEvents(
+      tx,
+      existing.expectedInstaller,
+      existing.expectedInstallerOtherText,
+      startAt,
+      endAt,
+      planGroupId
+    );
+    await tx.planGroup.update({ where: { id: planGroupId }, data: { startAt, endAt } });
+  });
   revalidatePath("/plan");
 }
 

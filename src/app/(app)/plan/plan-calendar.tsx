@@ -202,6 +202,10 @@ export function PlanCalendar({
     endAt: Date;
   } | null>(null);
   const resizingGroupRef = useRef<typeof resizingGroup>(null);
+  // Nastavi se ob vsakem spustu ročice (ne glede na to, ali se je uporabnik dejansko premaknil) in
+  // ga onClick spodaj prebere -- brez tega bi klik, ki ga brskalnik po spustu miške vseeno sproži na
+  // istem elementu, po vsakem raztezanju/krčenju po nesreči odprl pojavno okno dogodka.
+  const justResizedRef = useRef(false);
 
   // Privzeti pogled ob prvem nalaganju: na telefonu (ozek zaslon) dan, na računalniku teden. Enako
   // kot ThemeToggle najprej izriše SSR-varno privzeto vrednost ("week"), nato jo v učinku (samo na
@@ -412,6 +416,7 @@ export function PlanCalendar({
     function handleMouseUp() {
       const current = resizingGroupRef.current;
       if (current) {
+        justResizedRef.current = true;
         const { id, startAt, endAt } = current;
         startTransition(async () => {
           const result = await movePlanGroup(id, startAt.toISOString(), endAt.toISOString());
@@ -617,6 +622,10 @@ export function PlanCalendar({
                       onDragEnd={() => setDraggingGroup(null)}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (justResizedRef.current) {
+                          justResizedRef.current = false;
+                          return;
+                        }
                         setSelectedGroupId(g.id);
                       }}
                       className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm ${
