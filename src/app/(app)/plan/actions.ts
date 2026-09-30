@@ -172,6 +172,32 @@ export async function updatePlanGroup(
   return { success: true };
 }
 
+// Lahkotna posodobitev samo časa -- za povleci-in-spusti premikanje dogodka po koledarju. Za
+// razliko od updatePlanGroup ne spreminja stranke/opombe/monterja in zato ne potrebuje polnega
+// obrazca; kliče se neposredno (ne prek useActionState), enako kot deletePlanGroup spodaj.
+export async function movePlanGroup(
+  planGroupId: string,
+  startAtIso: string,
+  endAtIso: string
+): Promise<{ error?: string } | undefined> {
+  await requirePermission("canManagePlan");
+
+  const startAt = new Date(startAtIso);
+  const endAt = new Date(endAtIso);
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+    return { error: "Neveljaven datum/čas." };
+  }
+  if (endAt <= startAt) {
+    return { error: "Konec mora biti po začetku." };
+  }
+
+  const existing = await prisma.planGroup.findUnique({ where: { id: planGroupId } });
+  if (!existing) return { error: "Dogodek ne obstaja." };
+
+  await prisma.planGroup.update({ where: { id: planGroupId }, data: { startAt, endAt } });
+  revalidatePath("/plan");
+}
+
 export async function deletePlanGroup(planGroupId: string): Promise<{ error?: string } | undefined> {
   await requirePermission("canManagePlan");
 

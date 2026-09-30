@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useActionState } from "react";
+import { useEffect, useRef, useState, useTransition, useActionState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClientCombobox } from "@/components/client-combobox";
 import { PlateCombobox } from "@/components/plate-combobox";
 import { DateTimeInput } from "@/components/date-input";
-import { createPlanGroup } from "./actions";
+import { createPlanGroup, movePlanGroup } from "./actions";
 import { GroupPopup } from "./group-popup";
 
 const PALETTE = [
@@ -182,6 +182,13 @@ export function PlanCalendar({
   const [state, formAction, pending] = useActionState(createPlanGroup, undefined);
   const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
   const [calView, setCalView] = useState<"week" | "day">("week");
+  const [, startTransition] = useTransition();
+  // Ob povleku zapomni ID skupine, njeno trajanje (ohranjeno ob premiku) in navpični odmik med
+  // vrhom bloka in mestom, kjer ga je uporabnik prijel -- da ob spustu blok "ne skoči" tako, da bi
+  // se njegov vrh poravnal s kazalcem, temveč ostane pod kazalcem natanko tam, kjer je bil prijet.
+  const [draggingGroup, setDraggingGroup] = useState<{ id: string; grabOffsetY: number; durationMs: number } | null>(
+    null
+  );
 
   // Privzeti pogled ob prvem nalaganju: na telefonu (ozek zaslon) dan, na računalniku teden. Enako
   // kot ThemeToggle najprej izriše SSR-varno privzeto vrednost ("week"), nato jo v učinku (samo na
@@ -230,14 +237,14 @@ export function PlanCalendar({
   }
 
   // Simon in Vito imata vsak svojo stalno barvo (namesto barve glede na stranko), da ju je na
-  // koledarju mogoče takoj razločiti ne glede na to, za katero stranko delata -- svetlejši odtenek
-  // pomeni, da so vsi nalogi v dogodku že opravljeni, temnejši, da je vsaj eden še odprt (ali da
+  // koledarju mogoče takoj razločiti ne glede na to, za katero stranko delata -- temnejši odtenek
+  // pomeni, da so vsi nalogi v dogodku že opravljeni, svetlejši, da je vsaj eden še odprt (ali da
   // dogodek še nima nalogov). Za ostale/nedoločene monterje ostane barva po stranki nespremenjena.
   function installerBlockColor(installer: string | null, allDone: boolean): string | null {
     // Namenoma izven zgornjega PALETTE polja (barve po stranki) -- sicer bi se lahko po naključju
     // ujemala z barvo neke stranke pri drugem monterju in bi bila razločljivost spet izgubljena.
-    if (installer === "SIMON") return allDone ? "#38bdf8" : "#0284c7";
-    if (installer === "VITO") return allDone ? "#a78bfa" : "#7c3aed";
+    if (installer === "SIMON") return allDone ? "#0284c7" : "#38bdf8";
+    if (installer === "VITO") return allDone ? "#7c3aed" : "#a78bfa";
     return null;
   }
 
@@ -272,30 +279,66 @@ export function PlanCalendar({
     setNewGroupTasks((prev) => prev.filter((t) => t.id !== id));
   }
 
-  // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika (zaokroženo na 30
-  // min) in odpre ustvarjalni obrazec z že izpolnjenim začetkom IN datumom konca (isti dan); ura
-  // konca ostane za ročni vnos, glej DateTimeInput. Datum (dan) je s tem že določen, zato lockDate.
-  function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
-    if (!canManagePlan) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const offsetY = e.clientY - rect.top;
-    // offsetY je 0 na vrhu VIDNEGA okna (DAY_START_HOUR), ne na polnoči -- brez prištetega
-    // DAY_START_HOUR*60 bi klik npr. na vrstico "14:00" napačno nastavil uro na 08:00.
+  // offsetY je 0 na vrhu VIDNEGA okna (DAY_START_HOUR), ne na polnoči -- brez prištetega
+  // DAY_START_HOUR*60 bi npr. vrstica "14:00" napačno pomenila uro 08:00. Deljeno med klik-za-
+  // ustvarjanje in spust-za-premik, da oba na enak način (zaokroženo na 30 min, omejeno na vidno
+  // okno 6:00-17:30) pretvorita navpični položaj v uro/minuto.
+  function hourMinuteFromOffsetY(offsetY: number): { hour: number; minute: number } {
     const maxMinutesFromStart = (DAY_END_HOUR - DAY_START_HOUR) * 60 - 30;
     const minutesFromStart = Math.max(
       0,
       Math.min(maxMinutesFromStart, Math.round(((offsetY / PX_PER_HOUR) * 60) / 30) * 30)
     );
     const totalMinutes = DAY_START_HOUR * 60 + minutesFromStart;
-    const hour = Math.floor(totalMinutes / 60);
-    const minute = totalMinutes % 60;
-    const day = days[dayIdx];
-    const y = day.getFullYear();
-    const m = String(day.getMonth() + 1).padStart(2, "0");
-    const d = String(day.getDate()).padStart(2, "0");
-    const hh = String(hour).padStart(2, "0");
-    const mm = String(minute).padStart(2, "0");
+    return { hour: Math.floor(totalMinutes / 60), minute: totalMinutes % 60 };
+  }
+
+  function dateAtDayAndOffset(day: Date, offsetY: number): Date {
+    const { hour, minute } = hourMinuteFromOffsetY(offsetY);
+    const result = new Date(day);
+    result.setHours(hour, minute, 0, 0);
+    return result;
+  }
+
+  // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika in odpre
+  // ustvarjalni obrazec z že izpolnjenim začetkom IN datumom konca (isti dan); ura konca ostane za
+  // ročni vnos, glej DateTimeInput. Datum (dan) je s tem že določen, zato lockDate.
+  function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
+    if (!canManagePlan) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const start = dateAtDayAndOffset(days[dayIdx], e.clientY - rect.top);
+    const y = start.getFullYear();
+    const m = String(start.getMonth() + 1).padStart(2, "0");
+    const d = String(start.getDate()).padStart(2, "0");
+    const hh = String(start.getHours()).padStart(2, "0");
+    const mm = String(start.getMinutes()).padStart(2, "0");
     openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`, `${y}-${m}-${d}`, true);
+  }
+
+  function handleGroupDragStart(e: React.DragEvent<HTMLButtonElement>, g: PlanGroupItem) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDraggingGroup({
+      id: g.id,
+      grabOffsetY: e.clientY - rect.top,
+      durationMs: new Date(g.endAt).getTime() - new Date(g.startAt).getTime(),
+    });
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  // Dogodek spusti na nov dan/uro -- ohrani izvirno trajanje (samo premakne začetek in konec za
+  // enak zamik) in navpični odmik prijema, da blok pod kazalcem ostane tam, kjer je bil zgrabljen.
+  function handleDayColumnDrop(e: React.DragEvent<HTMLDivElement>, dayIdx: number) {
+    e.preventDefault();
+    if (!draggingGroup || !canManagePlan) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const newStart = dateAtDayAndOffset(days[dayIdx], e.clientY - rect.top - draggingGroup.grabOffsetY);
+    const newEnd = new Date(newStart.getTime() + draggingGroup.durationMs);
+    const groupId = draggingGroup.id;
+    setDraggingGroup(null);
+    startTransition(async () => {
+      const result = await movePlanGroup(groupId, newStart.toISOString(), newEnd.toISOString());
+      if (result?.error) window.alert(result.error);
+    });
   }
 
   function goToWeek(offsetDays: number) {
@@ -441,6 +484,10 @@ export function PlanCalendar({
               <div
                 key={dayIdx}
                 onClick={(e) => handleDayColumnClick(e, dayIdx)}
+                onDragOver={(e) => {
+                  if (draggingGroup) e.preventDefault();
+                }}
+                onDrop={(e) => handleDayColumnDrop(e, dayIdx)}
                 className={`relative border-l border-gray-100 dark:border-gray-800 ${canManagePlan ? "cursor-pointer" : ""}`}
               >
                 {HOURS.map((h) => (
@@ -458,6 +505,7 @@ export function PlanCalendar({
                   const widthPct = 100 / g.laneCount;
                   const doneCount = g.tasks.filter((t) => t.workOrderId).length;
                   const allDone = g.tasks.length > 0 && doneCount === g.tasks.length;
+                  const donePct = g.tasks.length > 0 ? (doneCount / g.tasks.length) * 100 : 0;
                   const installerText = g.expectedInstaller
                     ? g.expectedInstaller === "OSTALO"
                       ? g.expectedInstallerOtherText || "Ostalo"
@@ -467,11 +515,16 @@ export function PlanCalendar({
                     <button
                       key={g.id}
                       type="button"
+                      draggable={canManagePlan}
+                      onDragStart={(e) => handleGroupDragStart(e, g)}
+                      onDragEnd={() => setDraggingGroup(null)}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedGroupId(g.id);
                       }}
-                      className="absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm"
+                      className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm ${
+                        canManagePlan ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${draggingGroup?.id === g.id ? "opacity-40" : ""}`}
                       style={{
                         top: topHours * PX_PER_HOUR,
                         height: durationHours * PX_PER_HOUR - 2,
@@ -481,6 +534,13 @@ export function PlanCalendar({
                       }}
                       title={g.clientName}
                     >
+                      {/* Zeleni trak na dnu bloka nazorno pokaže delež opravljenih nalogov -- brez
+                          njih ga ni, pri delnem napredku je širok toliko odstotkov, pri vseh
+                          opravljenih pa čez celo širino. */}
+                      <div
+                        className="absolute bottom-0 left-0 h-[3px] bg-green-500"
+                        style={{ width: `${donePct}%` }}
+                      />
                       <div className="break-words font-semibold">{g.clientName}</div>
                       {installerText && (
                         <div className="break-words">

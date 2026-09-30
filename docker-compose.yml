@@ -25,6 +25,10 @@ services:
     environment:
       DATABASE_URL: postgresql://teren:${POSTGRES_PASSWORD}@postgres:5432/teren
       UPLOADS_DIR: /app/uploads
+      # Brez tega vsebnik teče v UTC, uporabniki pa so v Ljubljani -- strežniško izrisan (SSR)
+      # del odjemalskih komponent (npr. koledar v /plan) bi sicer računal ure iz napačnega
+      # časovnega pasu, kar se po hidraciji ne popravi (ostane napačen položaj na zaslonu).
+      TZ: Europe/Ljubljana
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
