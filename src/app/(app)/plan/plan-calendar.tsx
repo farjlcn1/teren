@@ -243,8 +243,8 @@ export function PlanCalendar({
   function installerBlockColor(installer: string | null, allDone: boolean): string | null {
     // Namenoma izven zgornjega PALETTE polja (barve po stranki) -- sicer bi se lahko po naključju
     // ujemala z barvo neke stranke pri drugem monterju in bi bila razločljivost spet izgubljena.
-    if (installer === "SIMON") return allDone ? "#0284c7" : "#38bdf8";
-    if (installer === "VITO") return allDone ? "#7c3aed" : "#a78bfa";
+    if (installer === "SIMON") return allDone ? "#075985" : "#0284c7";
+    if (installer === "VITO") return allDone ? "#5b21b6" : "#7c3aed";
     return null;
   }
 
