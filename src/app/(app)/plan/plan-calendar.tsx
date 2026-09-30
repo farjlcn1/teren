@@ -538,7 +538,7 @@ export function PlanCalendar({
                           njih ga ni, pri delnem napredku je širok toliko odstotkov, pri vseh
                           opravljenih pa čez celo širino. */}
                       <div
-                        className="absolute bottom-0 left-0 h-[3px] bg-green-500"
+                        className="absolute bottom-0 left-0 h-[6px] bg-green-500"
                         style={{ width: `${donePct}%` }}
                       />
                       <div className="break-words font-semibold">{g.clientName}</div>
