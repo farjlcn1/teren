@@ -51,6 +51,10 @@ export async function apiRequest<T>(path: string, { method = "GET", body }: ApiR
     cache: "no-store",
   });
 
+  // API je zavrnil API_TOKEN (glava WWW-Authenticate): napaka v nastavitvah, ne napačni podatki uporabnika.
+  if (res.status === 401 && res.headers.has("WWW-Authenticate")) {
+    throw new Error("API je zavrnil API_TOKEN. Preveri, da imata teren in api isti API_TOKEN v .env.");
+  }
   if (!res.ok) {
     throw new ApiError(res.status, await problemDetail(res));
   }

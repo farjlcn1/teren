@@ -13,11 +13,8 @@ export function DeleteVehicleButton({ id }: { id: string }) {
       onClick={() => {
         if (!confirm("Izbriši to registrsko št.?")) return;
         startTransition(async () => {
-          try {
-            await deleteVehicle(id);
-          } catch (e) {
-            alert(e instanceof Error ? e.message : "Napaka pri brisanju.");
-          }
+          const result = await deleteVehicle(id);
+          if (result?.error) alert(result.error);
         });
       }}
       className="text-sm text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"

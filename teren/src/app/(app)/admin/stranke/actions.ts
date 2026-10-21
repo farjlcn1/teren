@@ -59,13 +59,14 @@ export async function updateClient(id: string, _prevState: ActionState, formData
   redirect("/admin/stranke");
 }
 
-export async function deleteClient(id: string) {
+// Vrne napako namesto da jo vrže: Next.js v produkciji sporočilo vržene napake skrije (glej deleteUser).
+export async function deleteClient(id: string): Promise<ActionState> {
   await requirePermission("canManageClients");
 
   try {
     await clientsApi.deleteClient(id);
   } catch (e) {
-    throw new Error(apiErrorMessage(e));
+    return { error: apiErrorMessage(e) };
   }
   revalidatePath("/admin/stranke");
 }

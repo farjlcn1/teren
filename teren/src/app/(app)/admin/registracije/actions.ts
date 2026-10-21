@@ -52,13 +52,14 @@ export async function updateVehicle(id: string, _prevState: ActionState, formDat
   redirect("/admin/registracije");
 }
 
-export async function deleteVehicle(id: string) {
+// Vrne napako namesto da jo vrže: Next.js v produkciji sporočilo vržene napake skrije (glej deleteUser).
+export async function deleteVehicle(id: string): Promise<ActionState> {
   await requirePermission("canManageVehicles");
 
   try {
     await vehiclesApi.deleteVehicle(id);
   } catch (e) {
-    throw new Error(apiErrorMessage(e));
+    return { error: apiErrorMessage(e) };
   }
   revalidatePath("/admin/registracije");
 }

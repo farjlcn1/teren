@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { listUsers } from "@/lib/api/users";
 import { AddUserForm } from "./add-user-form";
 import { DeleteUserButton } from "./delete-user-button";
 
 export default async function UporabnikiPage() {
   const currentUser = await requirePermission("canManageUsers");
 
-  const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+  const users = await listUsers();
 
   return (
     <div className="space-y-6">
@@ -32,6 +32,7 @@ export default async function UporabnikiPage() {
                 u.canManageUsers && "Uporabniki",
                 u.canManageClients && "Stranke",
                 u.canManageVehicles && "Registracije",
+                u.canManagePlan && "Plan",
                 u.canViewAllOrders && "Vsi nalogi",
                 u.canEditOrders && "Urejanje",
                 u.canExportData && "Izvoz",

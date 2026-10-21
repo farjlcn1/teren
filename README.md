@@ -136,6 +136,11 @@ com/sledenje/teren/
 
 Enako je zgrajen kontekst **vehicle** (`/api/v1/vehicles`, sinhronizacija na `/api/v1/vehicles/sync-config` in `/sync`).
 
+Kontekst **user** (`/api/v1/users`, prijava na `/api/v1/auth/login`): gesla zgošči in preveri API (BCrypt, cena 12,
+združljivo z obstoječimi hashi iz bcryptjs), zgoščeno geslo nikoli ne zapusti API-ja. Sejo (podpisan piškotek) še
+vedno ustvari aplikacija; ob vsakem zahtevku prebere uporabnika s pravicami iz API-ja, da odvzem pravic velja takoj.
+Omejevanje poskusov prijave (5 poskusov, nato 15 min) je v aplikaciji, pred klicem API-ja.
+
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
 ## Baza in shema – pomembno
@@ -178,7 +183,7 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 |---|---|---|
 | 1 | Žeton med aplikacijo in API-jem (`API_TOKEN`), odjemalec `teren/src/lib/api/`, **stranke** in sinhronizacija strank | narejeno |
 | 2 | **Vozila** (registracije) in sinhronizacija vozil | narejeno |
-| 3 | **Uporabniki**, prijava in seje | |
+| 3 | **Uporabniki**, prijava in seje | narejeno |
 | 4 | **Delovni nalogi**: vnos, urejanje, fotografije, PDF, izvoz, e-pošta | |
 | 5 | **Plan**: dogodki in planirana opravila | |
 | 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |

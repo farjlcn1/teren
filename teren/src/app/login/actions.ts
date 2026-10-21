@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
-import { verifyPassword } from "@/lib/auth/password";
+import { authenticate, type User } from "@/lib/api/users";
+import { apiErrorMessage } from "@/lib/api/http";
 import { createSession } from "@/lib/auth/session";
 import { checkLoginRateLimit, recordLoginFailure, recordLoginSuccess } from "@/lib/auth/rate-limit";
 
@@ -32,22 +32,21 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
     return { error: rateLimit.message };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  if (!user || !user.isActive) {
-    recordLoginFailure(email);
-    return { error: "Napačen email ali geslo." };
+  // Geslo preveri API; null pomeni napačen email ali geslo ali onemogočenega uporabnika.
+  let user: User | null;
+  try {
+    user = await authenticate(email, parsed.data.password);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-
-  const valid = await verifyPassword(parsed.data.password, user.passwordHash);
-  if (!valid) {
+  if (!user) {
     recordLoginFailure(email);
     return { error: "Napačen email ali geslo." };
   }
 
   recordLoginSuccess(email);
   await createSession(user.id, rememberMe);
-  redirect(typeof redirectTo === "string" && redirectTo ? redirectTo : "/");
+  // Samo poti znotraj aplikacije ("/plan"), ne zunanji naslovi ("https://...", "//...", "/\\..." brskalnik bere kot "//").
+  const target = typeof redirectTo === "string" && /^\/(?![/\\])/.test(redirectTo) ? redirectTo : "/";
+  redirect(target);
 }
