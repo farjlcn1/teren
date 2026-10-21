@@ -3,12 +3,9 @@ import { z } from "zod";
 
 const BCRYPT_ROUNDS = 12;
 
+// Samo za prisma/seed.ts (prvi admin). Gesla v aplikaciji preverja in zgošči API.
 export function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
-
-export function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
 }
 
 // Vsaj 8 znakov, vsaj 1 velika začetnica, vsaj 1 številka, vsaj 1 poseben znak.

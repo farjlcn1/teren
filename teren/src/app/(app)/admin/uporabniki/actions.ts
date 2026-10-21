@@ -3,9 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
-import { hashPassword, passwordSchema } from "@/lib/auth/password";
+import { passwordSchema } from "@/lib/auth/password";
+import { apiErrorMessage } from "@/lib/api/http";
+import * as usersApi from "@/lib/api/users";
 
 export type ActionState = { error?: string; success?: string } | undefined;
 
@@ -27,19 +28,12 @@ export async function createUser(_prevState: ActionState, formData: FormData): P
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki." };
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
-  if (existing) {
-    return { error: "Uporabnik s tem emailom že obstaja." };
+  // API geslo zgošči in zavrne email, ki ga že uporablja drug uporabnik.
+  try {
+    await usersApi.createUser(parsed.data);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-
-  const passwordHash = await hashPassword(parsed.data.password);
-  await prisma.user.create({
-    data: {
-      email: parsed.data.email.toLowerCase(),
-      fullName: parsed.data.fullName,
-      passwordHash,
-    },
-  });
 
   revalidatePath("/admin/uporabniki");
   return { success: "Uporabnik ustvarjen." };
@@ -59,10 +53,17 @@ const permissionKeys = [
 export async function updateUserPermissions(userId: string, formData: FormData): Promise<void> {
   await requirePermission("canManageUsers");
 
-  const data = Object.fromEntries(permissionKeys.map((key) => [key, formData.get(key) === "on"]));
+  const permissions = Object.fromEntries(permissionKeys.map((key) => [key, formData.get(key) === "on"])) as Record<
+    (typeof permissionKeys)[number],
+    boolean
+  >;
   const isActive = formData.get("isActive") === "on";
 
-  await prisma.user.update({ where: { id: userId }, data: { ...data, isActive } });
+  try {
+    await usersApi.updateUserAccess(userId, { ...permissions, isActive });
+  } catch (e) {
+    throw new Error(apiErrorMessage(e));
+  }
 
   revalidatePath("/admin/uporabniki");
   redirect("/admin/uporabniki");
@@ -76,9 +77,9 @@ export async function deleteUser(id: string): Promise<ActionState> {
   await requirePermission("canManageUsers");
 
   try {
-    await prisma.user.delete({ where: { id } });
-  } catch {
-    return { error: "Uporabnika ni mogoče izbrisati." };
+    await usersApi.deleteUser(id);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
   revalidatePath("/admin/uporabniki");
 }
@@ -93,8 +94,11 @@ export async function resetUserPassword(userId: string, _prevState: ActionState,
     return { error: parsed.error.issues[0]?.message ?? "Neveljavno geslo." };
   }
 
-  const passwordHash = await hashPassword(parsed.data.password);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  try {
+    await usersApi.changeUserPassword(userId, parsed.data.password);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
 
   return { success: "Geslo posodobljeno." };
 }

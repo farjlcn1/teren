@@ -1,8 +1,9 @@
 import "server-only";
+import { cache } from "react";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { findUser } from "@/lib/api/users";
 
 const SESSION_COOKIE = "teren_session";
 const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 30; // 30 dni
@@ -64,12 +65,13 @@ async function getUserIdFromCookie(): Promise<string | null> {
   }
 }
 
-// Pravice se vedno berejo sveže iz baze (ne iz JWT), da odvzem pravic velja takoj.
-export async function getSession(): Promise<CurrentUser | null> {
+// Pravice se vedno berejo sveže iz API-ja (ne iz JWT), da odvzem pravic velja takoj.
+// React cache: znotraj enega zahtevka (layout, stran, akcija) se uporabnik prebere samo enkrat.
+export const getSession = cache(async (): Promise<CurrentUser | null> => {
   const userId = await getUserIdFromCookie();
   if (!userId) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await findUser(userId);
   if (!user || !user.isActive) return null;
 
   return {
@@ -85,7 +87,7 @@ export async function getSession(): Promise<CurrentUser | null> {
     canManageVehicles: user.canManageVehicles,
     canManagePlan: user.canManagePlan,
   };
-}
+});
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getSession();

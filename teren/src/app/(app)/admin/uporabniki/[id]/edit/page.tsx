@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { findUser } from "@/lib/api/users";
 import { PermissionsForm } from "./permissions-form";
 import { ResetPasswordForm } from "./reset-password-form";
 
@@ -8,7 +8,7 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
   await requirePermission("canManageUsers");
   const { id } = await params;
 
-  const user = await prisma.user.findUnique({ where: { id } });
+  const user = await findUser(id);
   if (!user) notFound();
 
   return (
@@ -23,6 +23,7 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
           canManageUsers: user.canManageUsers,
           canManageClients: user.canManageClients,
           canManageVehicles: user.canManageVehicles,
+          canManagePlan: user.canManagePlan,
           canViewAllOrders: user.canViewAllOrders,
           canEditOrders: user.canEditOrders,
           canExportData: user.canExportData,

@@ -1,5 +1,6 @@
 package com.sledenje.teren.common.presentation.controller;
 
+import com.sledenje.teren.common.domain.exception.AuthenticationFailedException;
 import com.sledenje.teren.common.domain.exception.DomainException;
 import com.sledenje.teren.common.domain.exception.ExternalServiceException;
 import com.sledenje.teren.common.domain.exception.ResourceConflictException;
@@ -30,6 +31,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleResourceNotFound(ResourceNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ProblemDetail handleAuthenticationFailed(AuthenticationFailedException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
     }
 
     @ExceptionHandler(ResourceConflictException.class)
