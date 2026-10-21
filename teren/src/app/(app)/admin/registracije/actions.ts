@@ -4,8 +4,9 @@ import { z } from "zod";
 import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
+import { apiErrorMessage } from "@/lib/api/http";
+import * as vehiclesApi from "@/lib/api/vehicles";
 
 function normalizePlate(plate: string): string {
   return plate.trim().toUpperCase();
@@ -25,12 +26,11 @@ export async function createVehicle(_prevState: ActionState, formData: FormData)
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  const existing = await prisma.vehicle.findUnique({ where: { plate: parsed.data.plate } });
-  if (existing) {
-    return { error: "Ta registrska št. že obstaja." };
+  try {
+    await vehiclesApi.createVehicle(parsed.data.plate);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-
-  await prisma.vehicle.create({ data: { plate: parsed.data.plate, source: "MANUAL" } });
   revalidatePath("/admin/registracije");
   return { success: "Registrska št. dodana." };
 }
@@ -43,7 +43,11 @@ export async function updateVehicle(id: string, _prevState: ActionState, formDat
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  await prisma.vehicle.update({ where: { id }, data: { plate: parsed.data.plate } });
+  try {
+    await vehiclesApi.updateVehicle(id, parsed.data.plate);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
   revalidatePath("/admin/registracije");
   redirect("/admin/registracije");
 }
@@ -52,9 +56,9 @@ export async function deleteVehicle(id: string) {
   await requirePermission("canManageVehicles");
 
   try {
-    await prisma.vehicle.delete({ where: { id } });
-  } catch {
-    throw new Error("Registrske št. ni mogoče izbrisati.");
+    await vehiclesApi.deleteVehicle(id);
+  } catch (e) {
+    throw new Error(apiErrorMessage(e));
   }
   revalidatePath("/admin/registracije");
 }
@@ -97,7 +101,7 @@ export async function importVehiclesXlsx(_prevState: ActionState, formData: Form
     return { error: 'Datoteka mora imeti stolpec "Registrska" (ali "Plate").' };
   }
 
-  let created = 0;
+  const plates: string[] = [];
   let skipped = 0;
 
   for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
@@ -116,14 +120,19 @@ export async function importVehiclesXlsx(_prevState: ActionState, formData: Form
       continue;
     }
 
-    const existing = await prisma.vehicle.findUnique({ where: { plate: parsed.data.plate } });
-    if (existing) {
-      skipped++;
-      continue;
-    }
+    plates.push(parsed.data.plate);
+  }
 
-    await prisma.vehicle.create({ data: { plate: parsed.data.plate, source: "IMPORT" } });
-    created++;
+  // API preskoči registrske številke, ki že obstajajo ali se v datoteki ponovijo.
+  let created = 0;
+  if (plates.length > 0) {
+    try {
+      const result = await vehiclesApi.importVehicles(plates);
+      created = result.createdCount;
+      skipped += result.skippedCount;
+    } catch (e) {
+      return { error: apiErrorMessage(e) };
+    }
   }
 
   revalidatePath("/admin/registracije");
@@ -146,59 +155,28 @@ export async function saveSyncConfig(_prevState: ActionState, formData: FormData
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  await prisma.vehicleSyncConfig.upsert({
-    where: { id: "default" },
-    create: { id: "default", apiUrl: parsed.data.apiUrl || null, apiToken: parsed.data.apiToken || null },
-    update: { apiUrl: parsed.data.apiUrl || null, apiToken: parsed.data.apiToken || null },
-  });
+  // Prazen žeton obdrži obstoječega (obrazec ga ne prikaže), prazen URL izbriše povezavo skupaj z žetonom.
+  try {
+    await vehiclesApi.saveVehicleSyncConfig(parsed.data);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
 
   revalidatePath("/admin/registracije");
   return { success: "Nastavitve sinhronizacije shranjene." };
 }
 
-const syncItemSchema = z.object({
-  externalId: z.string().min(1),
-  plate: z.string().min(1).transform(normalizePlate),
-});
-
+// Sinhronizacijo izvede API: prenese registrske številke z nastavljenega URL-ja in zapiše izid.
 export async function runSyncNow(): Promise<ActionState> {
   await requirePermission("canManageVehicles");
 
-  const config = await prisma.vehicleSyncConfig.findUnique({ where: { id: "default" } });
-  if (!config?.apiUrl) {
-    return { error: "Zunanja povezava še ni nastavljena." };
-  }
-
   try {
-    const res = await fetch(config.apiUrl, {
-      headers: config.apiToken ? { Authorization: `Bearer ${config.apiToken}` } : undefined,
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    const parsed = z.array(syncItemSchema).parse(data);
-
-    for (const item of parsed) {
-      await prisma.vehicle.upsert({
-        where: { externalId: item.externalId },
-        create: { plate: item.plate, externalId: item.externalId, source: "SYNC" },
-        update: { plate: item.plate },
-      });
-    }
-
-    await prisma.vehicleSyncConfig.update({
-      where: { id: "default" },
-      data: { lastSyncAt: new Date(), lastSyncStatus: `V redu — ${parsed.length} registrskih št.` },
-    });
-
+    const { syncedCount } = await vehiclesApi.syncVehicles();
     revalidatePath("/admin/registracije");
-    return { success: `Sinhroniziranih ${parsed.length} registrskih št.` };
+    return { success: `Sinhroniziranih ${syncedCount} registrskih št.` };
   } catch (e) {
-    const message = e instanceof Error ? e.message : "neznana napaka";
-    await prisma.vehicleSyncConfig
-      .update({ where: { id: "default" }, data: { lastSyncAt: new Date(), lastSyncStatus: `Napaka: ${message}` } })
-      .catch(() => undefined);
-    return { error: `Sinhronizacija ni uspela: ${message}` };
+    // Neuspeh je zapisan v nastavitvah, zato se osveži tudi prikaz zadnje sinhronizacije.
+    revalidatePath("/admin/registracije");
+    return { error: apiErrorMessage(e) };
   }
 }

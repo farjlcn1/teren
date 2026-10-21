@@ -111,6 +111,7 @@ com/sledenje/teren/
 │   ├── domain/exception/            DomainException, ResourceNotFoundException (404),
 │   │                                ResourceConflictException (409), ExternalServiceException (502)
 │   ├── infrastructure/config/       OpenApiConfig, TerenApiProperties
+│   ├── infrastructure/external/     ExternalListFetcher (GET JSON seznama za sinhronizacije)
 │   ├── infrastructure/persistence/  TimestampedJpaEntity (createdAt/updatedAt kot Prisma)
 │   ├── infrastructure/security/     ApiTokenFilter (/api/** zahteva Authorization: Bearer API_TOKEN)
 │   └── presentation/controller/     GlobalExceptionHandler (napake → ProblemDetail, brez stacktrace)
@@ -132,6 +133,8 @@ com/sledenje/teren/
         │                            ClientSyncController  →  /api/v1/clients/sync-config, /sync
         └── dto/                     zahtevki in odgovori
 ```
+
+Enako je zgrajen kontekst **vehicle** (`/api/v1/vehicles`, sinhronizacija na `/api/v1/vehicles/sync-config` in `/sync`).
 
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
@@ -174,7 +177,7 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 | Korak | Kaj | Stanje |
 |---|---|---|
 | 1 | Žeton med aplikacijo in API-jem (`API_TOKEN`), odjemalec `teren/src/lib/api/`, **stranke** in sinhronizacija strank | narejeno |
-| 2 | **Vozila** (registracije) in sinhronizacija vozil | |
+| 2 | **Vozila** (registracije) in sinhronizacija vozil | narejeno |
 | 3 | **Uporabniki**, prijava in seje | |
 | 4 | **Delovni nalogi**: vnos, urejanje, fotografije, PDF, izvoz, e-pošta | |
 | 5 | **Plan**: dogodki in planirana opravila | |
