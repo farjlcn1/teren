@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
 import { listVehicleOptions } from "@/lib/api/vehicles";
+import { listPlanGroups } from "@/lib/api/plan";
 import { PlanCalendar } from "./plan-calendar";
 
 function startOfWeek(d: Date): Date {
@@ -29,14 +29,7 @@ export default async function PlanPage({
   const [clients, vehicles, groups] = await Promise.all([
     listClientOptions(),
     listVehicleOptions(),
-    prisma.planGroup.findMany({
-      where: { startAt: { lt: weekEnd }, endAt: { gt: weekStart } },
-      orderBy: { startAt: "asc" },
-      include: {
-        client: { select: { id: true, name: true } },
-        tasks: { orderBy: { createdAt: "asc" } },
-      },
-    }),
+    listPlanGroups(weekStart, weekEnd),
   ]);
 
   return (
@@ -52,9 +45,9 @@ export default async function PlanPage({
           groups={groups.map((g) => ({
             id: g.id,
             clientId: g.clientId,
-            clientName: g.client.name,
-            startAt: g.startAt.toISOString(),
-            endAt: g.endAt.toISOString(),
+            clientName: g.clientName,
+            startAt: g.startAt,
+            endAt: g.endAt,
             note: g.note,
             contact: g.contact,
             expectedInstaller: g.expectedInstaller,
