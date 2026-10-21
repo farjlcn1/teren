@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { findClient } from "@/lib/api/clients";
 import { EditClientForm } from "./edit-client-form";
 
 export default async function EditClientPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePermission("canManageClients");
   const { id } = await params;
 
-  const client = await prisma.client.findUnique({ where: { id } });
+  const client = await findClient(id);
   if (!client) notFound();
 
   return (

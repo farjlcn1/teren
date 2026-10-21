@@ -48,6 +48,8 @@ springdoc:
 teren:
   api:
     public-url: ${API_PUBLIC_URL:http://localhost:8080}
+    # Skupni žeton z aplikacijo Teren (Authorization: Bearer ...). Brez njega se API ne zažene.
+    token: ${API_TOKEN:}
 
 # Pot do zunanje konfiguracije logiranja se lahko poda z LOGGING_CONFIG=/pot/do/logback.xml
 logging:

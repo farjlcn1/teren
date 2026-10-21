@@ -37,11 +37,23 @@ public class ClientJpaEntity extends TimestampedJpaEntity {
     }
 
     public ClientJpaEntity(String id, String name, String address, String contactInfo, ClientSource source) {
+        this(id, name, address, contactInfo, source, null);
+    }
+
+    public ClientJpaEntity(String id, String name, String address, String contactInfo, ClientSource source,
+            String externalId) {
         this.id = id;
         this.name = name;
         this.address = address;
         this.contactInfo = contactInfo;
         this.source = source;
+        this.externalId = externalId;
+    }
+
+    public void updateDetails(String name, String address, String contactInfo) {
+        this.name = name;
+        this.address = address;
+        this.contactInfo = contactInfo;
     }
 
     @Override

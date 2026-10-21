@@ -4,8 +4,9 @@ import { z } from "zod";
 import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
+import { apiErrorMessage } from "@/lib/api/http";
+import * as clientsApi from "@/lib/api/clients";
 
 const clientSchema = z.object({
   name: z.string().min(1, "Ime je obvezno"),
@@ -27,7 +28,11 @@ export async function createClient(_prevState: ActionState, formData: FormData):
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  await prisma.client.create({ data: { ...parsed.data, source: "MANUAL" } });
+  try {
+    await clientsApi.createClient(parsed.data);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
   revalidatePath("/admin/stranke");
   return { success: "Stranka dodana." };
 }
@@ -44,7 +49,12 @@ export async function updateClient(id: string, _prevState: ActionState, formData
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  await prisma.client.update({ where: { id }, data: parsed.data });
+  // Prazno polje izbriše obstoječo vrednost (API zamenja vse podatke stranke).
+  try {
+    await clientsApi.updateClient(id, parsed.data);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
   revalidatePath("/admin/stranke");
   redirect("/admin/stranke");
 }
@@ -53,9 +63,9 @@ export async function deleteClient(id: string) {
   await requirePermission("canManageClients");
 
   try {
-    await prisma.client.delete({ where: { id } });
-  } catch {
-    throw new Error("Stranke ni mogoče izbrisati, ker ima povezane delovne naloge.");
+    await clientsApi.deleteClient(id);
+  } catch (e) {
+    throw new Error(apiErrorMessage(e));
   }
   revalidatePath("/admin/stranke");
 }
@@ -102,7 +112,7 @@ export async function importClientsXlsx(_prevState: ActionState, formData: FormD
     return { error: 'Datoteka mora imeti stolpec "Ime" (ali "Name"/"Stranka").' };
   }
 
-  let created = 0;
+  const rows: clientsApi.ClientInput[] = [];
   let skipped = 0;
 
   for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
@@ -126,8 +136,16 @@ export async function importClientsXlsx(_prevState: ActionState, formData: FormD
       continue;
     }
 
-    await prisma.client.create({ data: { ...parsed.data, source: "IMPORT" } });
-    created++;
+    rows.push(parsed.data);
+  }
+
+  let created = 0;
+  if (rows.length > 0) {
+    try {
+      ({ createdCount: created } = await clientsApi.importClients(rows));
+    } catch (e) {
+      return { error: apiErrorMessage(e) };
+    }
   }
 
   revalidatePath("/admin/stranke");
@@ -150,61 +168,28 @@ export async function saveSyncConfig(_prevState: ActionState, formData: FormData
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki" };
   }
 
-  await prisma.clientSyncConfig.upsert({
-    where: { id: "default" },
-    create: { id: "default", apiUrl: parsed.data.apiUrl || null, apiToken: parsed.data.apiToken || null },
-    update: { apiUrl: parsed.data.apiUrl || null, apiToken: parsed.data.apiToken || null },
-  });
+  // Prazen žeton obdrži obstoječega (obrazec ga ne prikaže), prazen URL izbriše povezavo skupaj z žetonom.
+  try {
+    await clientsApi.saveClientSyncConfig(parsed.data);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
 
   revalidatePath("/admin/stranke");
   return { success: "Nastavitve sinhronizacije shranjene." };
 }
 
-const syncItemSchema = z.object({
-  externalId: z.string().min(1),
-  name: z.string().min(1),
-  address: z.string().optional(),
-  contactInfo: z.string().optional(),
-});
-
+// Sinhronizacijo izvede API: prenese stranke z nastavljenega URL-ja in zapiše izid.
 export async function runSyncNow(): Promise<ActionState> {
   await requirePermission("canManageClients");
 
-  const config = await prisma.clientSyncConfig.findUnique({ where: { id: "default" } });
-  if (!config?.apiUrl) {
-    return { error: "Zunanja povezava še ni nastavljena." };
-  }
-
   try {
-    const res = await fetch(config.apiUrl, {
-      headers: config.apiToken ? { Authorization: `Bearer ${config.apiToken}` } : undefined,
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    const parsed = z.array(syncItemSchema).parse(data);
-
-    for (const item of parsed) {
-      await prisma.client.upsert({
-        where: { externalId: item.externalId },
-        create: { ...item, source: "SYNC" },
-        update: { name: item.name, address: item.address, contactInfo: item.contactInfo },
-      });
-    }
-
-    await prisma.clientSyncConfig.update({
-      where: { id: "default" },
-      data: { lastSyncAt: new Date(), lastSyncStatus: `V redu — ${parsed.length} strank` },
-    });
-
+    const { syncedCount } = await clientsApi.syncClients();
     revalidatePath("/admin/stranke");
-    return { success: `Sinhroniziranih ${parsed.length} strank.` };
+    return { success: `Sinhroniziranih ${syncedCount} strank.` };
   } catch (e) {
-    const message = e instanceof Error ? e.message : "neznana napaka";
-    await prisma.clientSyncConfig
-      .update({ where: { id: "default" }, data: { lastSyncAt: new Date(), lastSyncStatus: `Napaka: ${message}` } })
-      .catch(() => undefined);
-    return { error: `Sinhronizacija ni uspela: ${message}` };
+    // Neuspeh je zapisan v nastavitvah, zato se osveži tudi prikaz zadnje sinhronizacije.
+    revalidatePath("/admin/stranke");
+    return { error: apiErrorMessage(e) };
   }
 }

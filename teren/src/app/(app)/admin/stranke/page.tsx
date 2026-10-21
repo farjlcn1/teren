@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { getClientSyncConfig, listClients } from "@/lib/api/clients";
 import { AddClientForm } from "./add-client-form";
 import { ImportClientsForm } from "./import-form";
 import { SyncForm } from "./sync-form";
@@ -16,8 +16,8 @@ export default async function StrankePage() {
   await requirePermission("canManageClients");
 
   const [clients, syncConfig] = await Promise.all([
-    prisma.client.findMany({ orderBy: { name: "asc" } }),
-    prisma.clientSyncConfig.findUnique({ where: { id: "default" } }),
+    listClients(),
+    getClientSyncConfig(),
   ]);
 
   return (
@@ -30,10 +30,10 @@ export default async function StrankePage() {
       </div>
 
       <SyncForm
-        apiUrl={syncConfig?.apiUrl ?? ""}
-        hasToken={Boolean(syncConfig?.apiToken)}
-        lastSyncAt={syncConfig?.lastSyncAt ? syncConfig.lastSyncAt.toLocaleString("sl-SI") : null}
-        lastSyncStatus={syncConfig?.lastSyncStatus ?? null}
+        apiUrl={syncConfig.apiUrl ?? ""}
+        hasToken={syncConfig.hasToken}
+        lastSyncAt={syncConfig.lastSyncAt ? new Date(syncConfig.lastSyncAt).toLocaleString("sl-SI") : null}
+        lastSyncStatus={syncConfig.lastSyncStatus}
       />
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">

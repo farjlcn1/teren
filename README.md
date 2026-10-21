@@ -16,9 +16,10 @@ Kasneje se okolje preseli na drug strežnik s pravo bazo (glej [Selitev](#selite
 | Mapa / datoteka | Vsebina |
 |---|---|
 | `docker-compose.yml` | servisi `db`, `teren`, `api` + `teren-seed` in `tunnel` (profila) |
-| `teren/` | klon [farjlcn1/teren](https://github.com/farjlcn1/teren), nespremenjen |
+| `teren/` | aplikacija teren (Next.js) |
 | `teren-api/` | Spring Boot API po internih smernicah kodiranja |
-| `.env` | skrivnosti (geslo baze, `SESSION_SECRET` …), **ne sodi v git** |
+| `teren-server/` | compose za strežnik z zunanjo bazo (glej [Selitev](#selitev-na-drug-strežnik-s-pravo-bazo)) |
+| `.env` | skrivnosti (geslo baze, `SESSION_SECRET`, `API_TOKEN` …), **ne sodi v git** |
 | `.env.example` | predloga za `.env` |
 
 ## Zagon
@@ -40,7 +41,7 @@ docker compose --profile seed run --rm teren-seed
 | Naslov | Kaj |
 |---|---|
 | http://localhost:3000 | aplikacija teren |
-| http://localhost:8080/swagger-ui.html | Swagger dokumentacija API-ja |
+| http://localhost:8080/swagger-ui.html | Swagger dokumentacija API-ja (*Authorize* → `API_TOKEN` iz `.env`) |
 | http://localhost:8080/actuator/health | stanje API-ja |
 | `localhost:5432`, baza `teren`, uporabnik `teren` | testna baza (geslo je `POSTGRES_PASSWORD` v `.env`) |
 
@@ -107,24 +108,29 @@ Po smernicah: `com.sledenje.teren.<kontekst>.<nivo>.<komponenta>`. Trenutno je n
 ```
 com/sledenje/teren/
 ├── common/                          skupno vsem kontekstom
-│   ├── domain/exception/            DomainException, ResourceNotFoundException
+│   ├── domain/exception/            DomainException, ResourceNotFoundException (404),
+│   │                                ResourceConflictException (409), ExternalServiceException (502)
 │   ├── infrastructure/config/       OpenApiConfig, TerenApiProperties
 │   ├── infrastructure/persistence/  TimestampedJpaEntity (createdAt/updatedAt kot Prisma)
+│   ├── infrastructure/security/     ApiTokenFilter (/api/** zahteva Authorization: Bearer API_TOKEN)
 │   └── presentation/controller/     GlobalExceptionHandler (napake → ProblemDetail, brez stacktrace)
 └── client/
     ├── domain/
-    │   ├── model/                   Client, ClientSource, NewClient
-    │   ├── service/                 ClientService            (interface)
-    │   ├── repository/              ClientRepository         (interface)
-    │   └── exception/               ClientNotFoundException
+    │   ├── model/                   Client, NewClient, ClientUpdate, ClientSyncConfig, SyncedClient …
+    │   ├── service/                 ClientService, ClientSyncService                (interface)
+    │   ├── repository/              ClientRepository, ClientSyncConfigRepository,
+    │   │                            ExternalClientRepository (zunanji sistem)      (interface)
+    │   └── exception/               ClientNotFoundException, ClientInUseException …
     ├── infrastructure/
-    │   ├── api/service/             ClientServiceImpl
-    │   ├── api/repository/          ClientRepositoryImpl
-    │   ├── persistence/             ClientJpaEntity, ClientJpaRepository
+    │   ├── api/service/             ClientServiceImpl, ClientSyncServiceImpl
+    │   ├── api/repository/          ClientRepositoryImpl, ClientSyncConfigRepositoryImpl,
+    │   │                            ExternalClientRepositoryImpl (RestClient)
+    │   ├── persistence/             JPA entitete in repozitoriji
     │   └── util/                    ClientJpaConverter, ClientDtoConverter
     └── presentation/
-        ├── controller/              ClientController  →  /api/v1/clients
-        └── dto/                     ClientDto, CreateClientRequest
+        ├── controller/              ClientController      →  /api/v1/clients (CRUD, /import)
+        │                            ClientSyncController  →  /api/v1/clients/sync-config, /sync
+        └── dto/                     zahtevki in odgovori
 ```
 
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
@@ -148,18 +154,37 @@ Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorn
 
 ## Selitev na drug strežnik s pravo bazo
 
-1. Na strežnik prenesi to mapo (oziroma kloniraj oba repozitorija) in `.env`.
-2. V `docker-compose.yml` odstrani servis `db` in volumen `db_data`, pri `teren` in `api` pa odstrani `depends_on: db`.
-3. Nastavi povezavo na pravo bazo (npr. `192.168.0.30:5433`):
-   - `teren` → `DATABASE_URL: postgresql://<uporabnik>:<geslo>@192.168.0.30:5433/<baza>`
-   - `api` → `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
-4. Pri `api` odstrani `ports:`, da je API dosegljiv samo aplikaciji teren.
-5. Na strežniku baze mora `pg_hba.conf` dovoliti povezave z IP-ja novega strežnika.
-6. Za prenos testnih podatkov: `docker compose exec -T db pg_dump -U teren teren > teren.sql`.
+Compose za strežnik je v `teren-server/docker-compose.yml`: brez servisa `db`, povezava na bazo
+(privzeto `192.168.0.30:5433`) iz `DB_*` v `.env`, API brez objavljenega porta.
 
-## Naslednji koraki
+1. Na strežniku: `git clone https://github.com/farjlcn1/teren`, nato `teren-server/docker-compose.yml`
+   kopiraj v koren kot `docker-compose.yml`. `teren-server/.env` ni v gitu: prenesi ga s tega
+   računalnika (`scp`) v koren kot `.env`.
+2. Na strežniku baze ustvari uporabnika in bazo z geslom `DB_PASSWORD` iz `.env`; `pg_hba.conf` mora
+   dovoliti povezave z IP-ja novega strežnika.
+3. `docker compose up -d --build`. Teren ob zagonu v bazi ustvari oziroma posodobi shemo (Prisma).
+4. Za prenos testnih podatkov: `docker compose exec -T db pg_dump -U teren -Fc teren > teren.dump`
+   na tem računalniku, nato `pg_restore` v prazno ciljno bazo **pred** prvim zagonom.
 
-- Avtentikacija in pravice v API-ju (pred kakršnokoli javno izpostavitvijo API-ja).
-- Ostali konteksti: `vehicle`, `user`, `workorder`, `plan`.
-- Preklop aplikacije teren s Prisme na klice API-ja (`API_URL` je že nastavljen).
-- Ko teren ne bo več dostopal do baze: shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`).
+## Prehod aplikacije na API
+
+Cilj: aplikacija teren do baze ne dostopa neposredno (Prisma), ampak vse gre prek teren-api.
+Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
+
+| Korak | Kaj | Stanje |
+|---|---|---|
+| 1 | Žeton med aplikacijo in API-jem (`API_TOKEN`), odjemalec `teren/src/lib/api/`, **stranke** in sinhronizacija strank | narejeno |
+| 2 | **Vozila** (registracije) in sinhronizacija vozil | |
+| 3 | **Uporabniki**, prijava in seje | |
+| 4 | **Delovni nalogi**: vnos, urejanje, fotografije, PDF, izvoz, e-pošta | |
+| 5 | **Plan**: dogodki in planirana opravila | |
+| 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |
+
+Kako aplikacija kliče API:
+
+- `teren/src/lib/api/http.ts`: `apiRequest` doda `Authorization: Bearer $API_TOKEN`, napake API-ja
+  (ProblemDetail) pretvori v `ApiError` s slovenskim sporočilom za obrazec.
+- En modul na kontekst (`teren/src/lib/api/clients.ts` …), samo na strežniku (`server-only`).
+- Pravice uporabnika (`canManageClients` …) preveri aplikacija pred klicem. API zaupa vsakemu, ki ima
+  žeton, zato ne sme biti dosegljiv od zunaj (na strežniku nima objavljenega porta).
+- Dokler korak ni narejen, ostali deli še berejo bazo s Prismo (npr. ime stranke pri delovnem nalogu).

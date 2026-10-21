@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { findClient } from "@/lib/api/clients";
 import { requirePermission } from "@/lib/auth/session";
 import type { InstallerName, Prisma } from "@/generated/prisma/client";
 
@@ -126,7 +127,7 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
     return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
   }
 
-  const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
+  const client = await findClient(parsed.data.clientId);
   if (!client) return { error: "Stranka ne obstaja." };
 
   const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;
@@ -197,7 +198,7 @@ export async function updatePlanGroup(
     return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
   }
 
-  const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
+  const client = await findClient(parsed.data.clientId);
   if (!client) return { error: "Stranka ne obstaja." };
 
   const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;

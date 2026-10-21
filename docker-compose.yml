@@ -43,8 +43,9 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      # Za prehod na API: teren ga bo klical po internem Docker omrežju.
+      # Teren kliče API po internem Docker omrežju in se predstavi z API_TOKEN.
       API_URL: http://api:8080
+      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
       # Brez tega vsebnik teče v UTC, koledar v /plan pa bi pri SSR računal napačne ure.
       TZ: Europe/Ljubljana
     ports:
@@ -72,6 +73,7 @@ services:
       DB_USERNAME: teren
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       API_PUBLIC_URL: http://localhost:8080
+      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
       APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
       TZ: Europe/Ljubljana
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
