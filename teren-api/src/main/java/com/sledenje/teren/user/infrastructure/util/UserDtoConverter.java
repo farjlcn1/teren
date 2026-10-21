@@ -30,6 +30,7 @@ public final class UserDtoConverter {
                 permissions.canManageClients(),
                 permissions.canManageVehicles(),
                 permissions.canManagePlan(),
+                user.sessionsValidFrom(),
                 user.createdAt(),
                 user.updatedAt());
     }

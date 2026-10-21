@@ -9,6 +9,6 @@ public record UpdateVehicleSyncConfigRequest(
                 example = "https://fleet.example.com/api/vozila", nullable = true)
         @Pattern(regexp = "^$|^https?://\\S+$", message = "Vnesi veljaven URL")
         String apiUrl,
-        @Schema(description = "Bearer žeton; prazen obdrži obstoječega", nullable = true)
+        @Schema(description = "Bearer žeton; prazen obdrži obstoječega, če se URL ne spremeni", nullable = true)
         String apiToken) {
 }

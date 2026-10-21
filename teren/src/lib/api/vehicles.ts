@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError, apiRequest } from "./http";
+import { ApiError, apiRequest, pathSegment } from "./http";
 
 export type VehicleSource = "MANUAL" | "IMPORT" | "SYNC";
 
@@ -36,7 +36,7 @@ export async function listVehicleOptions(): Promise<VehicleOption[]> {
 
 export async function findVehicle(id: string): Promise<Vehicle | null> {
   try {
-    return await apiRequest<Vehicle>(`${BASE}/${encodeURIComponent(id)}`);
+    return await apiRequest<Vehicle>(`${BASE}/${pathSegment(id)}`);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
@@ -48,11 +48,11 @@ export function createVehicle(plate: string): Promise<Vehicle> {
 }
 
 export function updateVehicle(id: string, plate: string): Promise<Vehicle> {
-  return apiRequest<Vehicle>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: { plate } });
+  return apiRequest<Vehicle>(`${BASE}/${pathSegment(id)}`, { method: "PUT", body: { plate } });
 }
 
 export function deleteVehicle(id: string): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}`, { method: "DELETE" });
 }
 
 // Obstoječe in v uvozu ponovljene registrske številke API preskoči.

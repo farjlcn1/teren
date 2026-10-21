@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError, apiRequest } from "./http";
+import { ApiError, apiRequest, pathSegment } from "./http";
 
 export type ClientSource = "MANUAL" | "IMPORT" | "SYNC";
 
@@ -44,7 +44,7 @@ export async function listClientOptions(): Promise<ClientOption[]> {
 
 export async function findClient(id: string): Promise<Client | null> {
   try {
-    return await apiRequest<Client>(`${BASE}/${encodeURIComponent(id)}`);
+    return await apiRequest<Client>(`${BASE}/${pathSegment(id)}`);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
@@ -56,11 +56,11 @@ export function createClient(input: ClientInput): Promise<Client> {
 }
 
 export function updateClient(id: string, input: ClientInput): Promise<Client> {
-  return apiRequest<Client>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: input });
+  return apiRequest<Client>(`${BASE}/${pathSegment(id)}`, { method: "PUT", body: input });
 }
 
 export function deleteClient(id: string): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}`, { method: "DELETE" });
 }
 
 // Shranijo se vse stranke ali nobena.

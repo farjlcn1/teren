@@ -23,6 +23,8 @@ services:
       # Na prazni bazi API ob zagonu ustvari admina s tem emailom in geslo izpiše v log.
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
+      # Swagger UI in OpenAPI opis v produkciji nista potrebna.
+      API_DOCS_ENABLED: "false"
       TZ: Europe/Ljubljana
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
     mem_limit: 768m

@@ -9,6 +9,6 @@ public record UpdateClientSyncConfigRequest(
                 example = "https://crm.example.com/api/stranke", nullable = true)
         @Pattern(regexp = "^$|^https?://\\S+$", message = "Vnesi veljaven URL")
         String apiUrl,
-        @Schema(description = "Bearer žeton; prazen obdrži obstoječega", nullable = true)
+        @Schema(description = "Bearer žeton; prazen obdrži obstoječega, če se URL ne spremeni", nullable = true)
         String apiToken) {
 }

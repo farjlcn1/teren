@@ -4,7 +4,8 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
 import { apiErrorMessage } from "@/lib/api/http";
-import { updateWorkOrder as updateWorkOrderInApi } from "@/lib/api/work-orders";
+import { findWorkOrder, updateWorkOrder as updateWorkOrderInApi } from "@/lib/api/work-orders";
+import { canAccessWorkOrder } from "@/lib/work-orders/access";
 
 const installerSchema = z.object({
   name: z.enum(["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"]),
@@ -98,6 +99,12 @@ export async function updateWorkOrder(id: string, _prevState: EditState, formDat
     if (inst.name === "OSTALO" && !inst.otherText?.trim()) {
       return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
     }
+  }
+
+  // ID naloga pride od odjemalca, zato se pravica do naloga preveri tu (enako kot pri podrobnostih).
+  const existing = await findWorkOrder(id);
+  if (!existing || !canAccessWorkOrder(user, existing)) {
+    return { error: "Nalog ne obstaja." };
   }
 
   // API spremembe zapiše v zgodovino urejanj (z enakimi oznakami polj kot doslej) in doda vozilo, če ga še ni.

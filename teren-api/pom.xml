@@ -28,6 +28,10 @@
     </scm>
     <properties>
         <java.version>25</java.version>
+        <!-- Varnostni popravki pred novo izdajo Spring Boot (znane ranljivosti v 3.1.5, 2.21.5 in 11.0.24). -->
+        <jackson-bom.version>3.1.8</jackson-bom.version>
+        <jackson-2-bom.version>2.21.8</jackson-2-bom.version>
+        <tomcat.version>11.0.27</tomcat.version>
     </properties>
     <dependencies>
         <dependency>

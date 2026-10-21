@@ -3,16 +3,19 @@ import { jwtVerify } from "jose";
 
 const SESSION_COOKIE = "teren_session";
 
-function getSecret() {
-  return new TextEncoder().encode(process.env.SESSION_SECRET);
+// Brez dovolj dolgega ključa (glej lib/auth/session.ts) ni veljavne seje.
+function getSecret(): Uint8Array | null {
+  const secret = process.env.SESSION_SECRET;
+  return secret && secret.length >= 32 ? new TextEncoder().encode(secret) : null;
 }
 
 export async function proxy(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const secret = getSecret();
 
-  if (token) {
+  if (token && secret) {
     try {
-      await jwtVerify(token, getSecret());
+      await jwtVerify(token, secret, { algorithms: ["HS256"] });
       return NextResponse.next();
     } catch {
       // neveljaven ali potekel žeton, obravnavamo kot neprijavljenega

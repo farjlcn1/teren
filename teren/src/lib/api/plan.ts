@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError, apiRequest } from "./http";
+import { ApiError, apiRequest, pathSegment } from "./http";
 
 export type PlannedTask = {
   id: string;
@@ -51,7 +51,7 @@ export function listPlanGroups(from: Date, to: Date): Promise<PlanGroup[]> {
 
 export async function findPlannedTask(id: string): Promise<PlannedTaskDetail | null> {
   try {
-    return await apiRequest<PlannedTaskDetail>(`${TASKS}/${encodeURIComponent(id)}`);
+    return await apiRequest<PlannedTaskDetail>(`${TASKS}/${pathSegment(id)}`);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
@@ -66,21 +66,21 @@ export function createPlanGroup(
 }
 
 export function updatePlanGroup(id: string, input: PlanGroupInput): Promise<void> {
-  return apiRequest<void>(`${GROUPS}/${encodeURIComponent(id)}`, { method: "PUT", body: input });
+  return apiRequest<void>(`${GROUPS}/${pathSegment(id)}`, { method: "PUT", body: input });
 }
 
 export function movePlanGroup(id: string, startAt: Date, endAt: Date): Promise<void> {
-  return apiRequest<void>(`${GROUPS}/${encodeURIComponent(id)}/window`, { method: "PUT", body: { startAt, endAt } });
+  return apiRequest<void>(`${GROUPS}/${pathSegment(id)}/window`, { method: "PUT", body: { startAt, endAt } });
 }
 
 export function deletePlanGroup(id: string): Promise<void> {
-  return apiRequest<void>(`${GROUPS}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`${GROUPS}/${pathSegment(id)}`, { method: "DELETE" });
 }
 
 export function addPlannedTask(planGroupId: string, task: PlannedTaskInput): Promise<{ id: string }> {
-  return apiRequest<{ id: string }>(`${GROUPS}/${encodeURIComponent(planGroupId)}/tasks`, { method: "POST", body: task });
+  return apiRequest<{ id: string }>(`${GROUPS}/${pathSegment(planGroupId)}/tasks`, { method: "POST", body: task });
 }
 
 export function deletePlannedTask(id: string): Promise<void> {
-  return apiRequest<void>(`${TASKS}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`${TASKS}/${pathSegment(id)}`, { method: "DELETE" });
 }

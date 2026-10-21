@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError, apiRequest } from "./http";
+import { ApiError, apiRequest, pathSegment } from "./http";
 
 export type UserPermissions = {
   canManageUsers: boolean;
@@ -18,6 +18,8 @@ export type User = UserPermissions & {
   email: string;
   fullName: string;
   isActive: boolean;
+  // Seje, izdane pred tem časom, ne veljajo (nastavi se ob spremembi gesla).
+  sessionsValidFrom: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,7 +32,7 @@ export function listUsers(): Promise<User[]> {
 
 export async function findUser(id: string): Promise<User | null> {
   try {
-    return await apiRequest<User>(`${BASE}/${encodeURIComponent(id)}`);
+    return await apiRequest<User>(`${BASE}/${pathSegment(id)}`);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
@@ -44,15 +46,15 @@ export function createUser(input: { email: string; fullName: string; password: s
 
 // Vse pravice se pošljejo hkrati; manjkajoča pravica bi jo odvzela, zato jih API zahteva vse.
 export function updateUserAccess(id: string, access: UserPermissions & { isActive: boolean }): Promise<User> {
-  return apiRequest<User>(`${BASE}/${encodeURIComponent(id)}/access`, { method: "PUT", body: access });
+  return apiRequest<User>(`${BASE}/${pathSegment(id)}/access`, { method: "PUT", body: access });
 }
 
 export function changeUserPassword(id: string, password: string): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}/password`, { method: "PUT", body: { password } });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}/password`, { method: "PUT", body: { password } });
 }
 
 export function deleteUser(id: string): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}`, { method: "DELETE" });
 }
 
 // null pri napačnem emailu ali geslu in pri onemogočenem uporabniku (API vrne 401 za vse tri primere).

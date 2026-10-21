@@ -53,7 +53,9 @@ export async function saveSignature(workOrderId: string, file: File): Promise<st
   const dir = await ensureWorkOrderDir(workOrderId);
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = "signature.png";
-  await writeFile(path.join(dir, filename), buffer);
+  // Prekodiranje zagotovi, da je na disku res slika (in ne poljubna vsebina z imenom .png).
+  const png = await sharp(buffer).png().toBuffer();
+  await writeFile(path.join(dir, filename), png);
   return path.join("work-orders", workOrderId, filename);
 }
 
@@ -61,7 +63,8 @@ export async function readUploadedFile(relativePath: string): Promise<Buffer> {
   const fullPath = path.join(UPLOADS_DIR, relativePath);
   const resolved = path.resolve(fullPath);
   const uploadsRoot = path.resolve(UPLOADS_DIR);
-  if (!resolved.startsWith(uploadsRoot)) {
+  // Z ločilom na koncu, da sosednja mapa z enakim začetkom imena (npr. uploads-x) ne prestane preverjanja.
+  if (!resolved.startsWith(uploadsRoot + path.sep)) {
     throw new Error("Neveljavna pot do datoteke.");
   }
   return readFile(resolved);

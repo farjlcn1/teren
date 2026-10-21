@@ -3,10 +3,11 @@ import { requirePermission } from "@/lib/auth/session";
 import { findWorkOrder } from "@/lib/api/work-orders";
 import { listClientOptions } from "@/lib/api/clients";
 import { listVehicleOptions } from "@/lib/api/vehicles";
+import { canAccessWorkOrder } from "@/lib/work-orders/access";
 import { EditWorkOrderForm } from "./edit-work-order-form";
 
 export default async function EditWorkOrderPage({ params }: { params: Promise<{ id: string }> }) {
-  await requirePermission("canEditOrders");
+  const user = await requirePermission("canEditOrders");
   const { id } = await params;
 
   const [order, clients, vehicles] = await Promise.all([
@@ -15,7 +16,7 @@ export default async function EditWorkOrderPage({ params }: { params: Promise<{ 
     listVehicleOptions(),
   ]);
 
-  if (!order) notFound();
+  if (!order || !canAccessWorkOrder(user, order)) notFound();
 
   return (
     <div className="space-y-4">
