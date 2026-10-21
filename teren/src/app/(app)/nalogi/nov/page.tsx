@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
 import { listVehicleOptions } from "@/lib/api/vehicles";
+import { findPlannedTask } from "@/lib/api/plan";
 import { WorkOrderForm } from "./work-order-form";
 
 export default async function NovNalogPage({
@@ -16,12 +16,7 @@ export default async function NovNalogPage({
   const [clients, vehicles, plannedTask] = await Promise.all([
     listClientOptions(),
     listVehicleOptions(),
-    planTaskId
-      ? prisma.plannedTask.findUnique({
-          where: { id: planTaskId },
-          include: { planGroup: { include: { client: { select: { id: true, name: true } } } } },
-        })
-      : null,
+    planTaskId ? findPlannedTask(planTaskId) : null,
   ]);
 
   // Nekdo drug je ta planirani nalog med tem že izpolnil -- pokaži povezavo na obstoječi nalog
@@ -46,14 +41,14 @@ export default async function NovNalogPage({
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-        {plannedTask ? `Zaključi planirani nalog — ${plannedTask.planGroup.client.name}` : "Nov delovni nalog"}
+        {plannedTask ? `Zaključi planirani nalog — ${plannedTask.clientName}` : "Nov delovni nalog"}
       </h1>
       <WorkOrderForm
         clients={clients}
         vehiclePlates={vehicles.map((v) => v.plate)}
         plannedTaskId={plannedTask?.id}
-        initialClientId={plannedTask?.planGroup.clientId}
-        lockedClientName={plannedTask?.planGroup.client.name}
+        initialClientId={plannedTask?.clientId}
+        lockedClientName={plannedTask?.clientName}
         initialVehiclePlate={plannedTask?.vehiclePlate}
         initialComment={plannedTask?.note ?? undefined}
         initialType={plannedTask?.type ?? undefined}

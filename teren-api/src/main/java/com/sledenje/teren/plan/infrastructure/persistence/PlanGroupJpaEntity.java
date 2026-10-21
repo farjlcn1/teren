@@ -72,6 +72,17 @@ public class PlanGroupJpaEntity extends TimestampedJpaEntity {
         this.createdById = createdById;
     }
 
+    public void update(PlanClientJpaEntity client, Instant startAt, Instant endAt, String note, String contact,
+            InstallerName expectedInstaller, String expectedInstallerOtherText) {
+        this.client = client;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.note = note;
+        this.contact = contact;
+        this.expectedInstaller = expectedInstaller;
+        this.expectedInstallerOtherText = expectedInstallerOtherText;
+    }
+
     public void changeWindow(Instant startAt, Instant endAt) {
         this.startAt = startAt;
         this.endAt = endAt;

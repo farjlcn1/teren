@@ -152,6 +152,13 @@ Vnos naloga (`POST /api/v1/work-orders`) je ena transakcija: dnevna številka (`
 zapis v planu (planirani nalog ali dogodek istega monterja pri stranki). Aplikacija nato shrani fotografije in
 podpis na disk in poti sporoči na `/attachments`. Urejanje (`PUT`) zgodovino sprememb izračuna v API-ju.
 
+Kontekst **plan** (`/api/v1/plan-groups`, `/api/v1/planned-tasks`): dogodki v obdobju, vnos, urejanje, premik,
+brisanje in planirani nalogi. Isti monter (pri »Ostalo« po imenu) nima prekrivajočih se dogodkov: ob vnosu,
+urejanju ali premiku API prekrivajoče dogodke verižno zamakne za konec novega okna.
+
+Po 5. koraku aplikacija baze ne uporablja več; Prisma ostane samo za migracije ob zagonu (`prisma migrate deploy`)
+in za `teren-seed`, dokler shema ne preide v API (6. korak).
+
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
 ## Baza in shema – pomembno
@@ -197,7 +204,7 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 | 3 | **Uporabniki**, prijava in seje | narejeno |
 | 4a | **Delovni nalogi – branje**: seznam s filtri, podrobnosti, PDF, oba izvoza | narejeno |
 | 4b | **Delovni nalogi – pisanje**: vnos, urejanje z zgodovino, fotografije, podpis, e-pošta | narejeno |
-| 5 | **Plan**: dogodki in planirana opravila | |
+| 5 | **Plan**: dogodki in planirana opravila | narejeno |
 | 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |
 
 Kako aplikacija kliče API:

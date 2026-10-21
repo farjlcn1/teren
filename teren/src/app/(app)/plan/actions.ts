@@ -2,10 +2,9 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db";
-import { findClient } from "@/lib/api/clients";
 import { requirePermission } from "@/lib/auth/session";
-import type { InstallerName, Prisma } from "@/generated/prisma/client";
+import { apiErrorMessage } from "@/lib/api/http";
+import * as planApi from "@/lib/api/plan";
 
 const INSTALLER_NAMES = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"] as const;
 const WORK_ORDER_TYPES = ["MONTAZA", "DEMONTAZA", "INTERVENCIJA", "PREMONTAZA", "OSTALO"] as const;
@@ -15,8 +14,8 @@ export type PlanActionState = { error?: string; success?: boolean; groupId?: str
 const planGroupSchema = z.object({
   clientId: z.string().min(1, "Izberi stranko."),
   startAt: z.string().min(1, "Vnesi začetek."),
-  // Neobvezno pri kreiranju (createPlanGroup privzame 1h trajanje) -- updatePlanGroup ob manjkajočem
-  // koncu ob ureji vseeno vrne napako, glej tam.
+  // Neobvezno pri kreiranju (API privzame 1h trajanje) -- updatePlanGroup ob manjkajočem koncu
+  // vseeno vrne napako, glej tam.
   endAt: z.string().optional(),
   note: z.string().optional(),
   contact: z.string().optional(),
@@ -42,45 +41,38 @@ function parsePlanGroupInput(formData: FormData) {
   });
 }
 
-// Isti monter (po imenu; pri "Ostalo" tudi po prostem besedilu, ker gre lahko za različne ljudi) ne
-// sme imeti dveh časovno prekrivajočih se dogodkov. Namesto da bi ustvarjanje/premik zato zavrnili,
-// prekrivajoč dogodek preprosto zamakne naprej -- tik za konec pravkar postavljenega/premaknjenega
-// dogodka -- in v zanki (z osveženim "zasedenim" oknom) tudi vse naslednje, ki bi jih ta zamik spet
-// prekril, dokler veriga ne pristane na prostem terminu. Brez izbranega monterja se ne zgodi nič,
-// saj ni s čim preveriti prekrivanja.
-async function pushOverlappingInstallerEvents(
-  tx: Prisma.TransactionClient,
-  installer: InstallerName | null,
-  otherText: string | null,
-  startAt: Date,
-  endAt: Date,
-  excludeId?: string
-): Promise<void> {
-  if (!installer) return;
-
-  let cursorStart = startAt;
-  let cursorEnd = endAt;
-  const shiftedIds = new Set<string>(excludeId ? [excludeId] : []);
-
-  for (let i = 0; i < 500; i++) {
-    const conflict = await tx.planGroup.findFirst({
-      where: {
-        expectedInstaller: installer,
-        ...(installer === "OSTALO" ? { expectedInstallerOtherText: otherText } : {}),
-        startAt: { lt: cursorEnd },
-        endAt: { gt: cursorStart },
-        id: { notIn: Array.from(shiftedIds) },
-      },
-      orderBy: { startAt: "asc" },
-    });
-    if (!conflict) return;
-
-    const duration = conflict.endAt.getTime() - conflict.startAt.getTime();
-    cursorStart = cursorEnd;
-    cursorEnd = new Date(cursorStart.getTime() + duration);
-    await tx.planGroup.update({ where: { id: conflict.id }, data: { startAt: cursorStart, endAt: cursorEnd } });
-    shiftedIds.add(conflict.id);
+// Čas iz obrazca (datetime-local) je po lokalnem času strežnika; API dobi točen trenutek.
+// Prekrivajoče se dogodke istega monterja zamakne API (glej PlanService), tu se preveri samo obrazec.
+function toPlanGroupInput(
+  data: z.infer<typeof planGroupSchema>,
+  endRequired: boolean
+): { input: planApi.PlanGroupInput } | { error: string } {
+  if (endRequired && !data.endAt) {
+    return { error: "Vnesi konec." };
   }
+  const startAt = new Date(data.startAt);
+  const endAt = data.endAt ? new Date(data.endAt) : null;
+  if (Number.isNaN(startAt.getTime()) || (endAt && Number.isNaN(endAt.getTime()))) {
+    return { error: "Neveljaven datum/čas." };
+  }
+  if (endAt && endAt <= startAt) {
+    return { error: "Konec mora biti po začetku." };
+  }
+  const expectedInstaller = data.expectedInstaller || null;
+  if (expectedInstaller === "OSTALO" && !data.expectedInstallerOtherText?.trim()) {
+    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
+  }
+  return {
+    input: {
+      clientId: data.clientId,
+      startAt,
+      endAt,
+      note: data.note || null,
+      contact: data.contact || null,
+      expectedInstaller,
+      expectedInstallerOtherText: expectedInstaller === "OSTALO" ? data.expectedInstallerOtherText || null : null,
+    },
+  };
 }
 
 export async function createPlanGroup(_prevState: PlanActionState, formData: FormData): Promise<PlanActionState> {
@@ -102,57 +94,22 @@ export async function createPlanGroup(_prevState: PlanActionState, formData: For
     return { error: tasksParsed.error.issues[0]?.message ?? "Neveljavni nalogi." };
   }
 
-  const startAt = new Date(parsed.data.startAt);
-  if (Number.isNaN(startAt.getTime())) {
-    return { error: "Neveljaven datum/čas." };
+  const planGroup = toPlanGroupInput(parsed.data, false);
+  if ("error" in planGroup) return planGroup;
+
+  let groupId: string;
+  try {
+    ({ id: groupId } = await planApi.createPlanGroup({
+      ...planGroup.input,
+      createdById: user.id,
+      tasks: tasksParsed.data.map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type || null, note: t.note || null })),
+    }));
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-
-  // Konec je neobvezen -- brez njega dogodek privzeto traja 1h, enako kot nalog ustvarjen izven
-  // plana (glej createWorkOrder v nalogi/nov/actions.ts).
-  let endAt: Date;
-  if (parsed.data.endAt) {
-    endAt = new Date(parsed.data.endAt);
-    if (Number.isNaN(endAt.getTime())) {
-      return { error: "Neveljaven datum/čas." };
-    }
-    if (endAt <= startAt) {
-      return { error: "Konec mora biti po začetku." };
-    }
-  } else {
-    endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
-  }
-
-  const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
-  if (expectedInstaller === "OSTALO" && !parsed.data.expectedInstallerOtherText?.trim()) {
-    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
-  }
-
-  const client = await findClient(parsed.data.clientId);
-  if (!client) return { error: "Stranka ne obstaja." };
-
-  const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;
-  const group = await prisma.$transaction(async (tx) => {
-    await pushOverlappingInstallerEvents(tx, expectedInstaller, otherTextForCheck, startAt, endAt);
-    return tx.planGroup.create({
-      data: {
-        clientId: client.id,
-        startAt,
-        endAt,
-        note: parsed.data.note || null,
-        contact: parsed.data.contact || null,
-        expectedInstaller,
-        expectedInstallerOtherText: otherTextForCheck,
-        createdById: user.id,
-        tasks:
-          tasksParsed.data.length > 0
-            ? { create: tasksParsed.data.map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type || null, note: t.note || null })) }
-            : undefined,
-      },
-    });
-  });
 
   revalidatePath("/plan");
-  return { success: true, groupId: group.id };
+  return { success: true, groupId };
 }
 
 export async function updatePlanGroup(
@@ -162,61 +119,21 @@ export async function updatePlanGroup(
 ): Promise<PlanActionState> {
   await requirePermission("canManagePlan");
 
-  const existing = await prisma.planGroup.findUnique({
-    where: { id: planGroupId },
-    include: { tasks: { select: { workOrderId: true } } },
-  });
-  if (!existing) return { error: "Dogodek ne obstaja." };
-
   const parsed = parsePlanGroupInput(formData);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki." };
   }
 
-  const hasCompletedTask = existing.tasks.some((t) => t.workOrderId);
-  if (hasCompletedTask && parsed.data.clientId !== existing.clientId) {
-    return { error: "Stranke ni mogoče spremeniti, ker je bil vsaj en nalog v tej skupini že opravljen." };
-  }
-
   // Pri urejanju (za razliko od kreiranja) konec ostane obvezen -- samodejno 1h trajanje velja samo
-  // za nov dogodek brez izbranega konca.
-  if (!parsed.data.endAt) {
-    return { error: "Vnesi konec." };
-  }
+  // za nov dogodek brez izbranega konca. Spremembo stranke dogodka z opravljenim nalogom zavrne API.
+  const planGroup = toPlanGroupInput(parsed.data, true);
+  if ("error" in planGroup) return planGroup;
 
-  const startAt = new Date(parsed.data.startAt);
-  const endAt = new Date(parsed.data.endAt);
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-    return { error: "Neveljaven datum/čas." };
+  try {
+    await planApi.updatePlanGroup(planGroupId, planGroup.input);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-  if (endAt <= startAt) {
-    return { error: "Konec mora biti po začetku." };
-  }
-
-  const expectedInstaller: InstallerName | null = parsed.data.expectedInstaller || null;
-  if (expectedInstaller === "OSTALO" && !parsed.data.expectedInstallerOtherText?.trim()) {
-    return { error: "Vnesi ime monterja pri izbiri 'Ostalo'." };
-  }
-
-  const client = await findClient(parsed.data.clientId);
-  if (!client) return { error: "Stranka ne obstaja." };
-
-  const otherTextForCheck = expectedInstaller === "OSTALO" ? parsed.data.expectedInstallerOtherText || null : null;
-  await prisma.$transaction(async (tx) => {
-    await pushOverlappingInstallerEvents(tx, expectedInstaller, otherTextForCheck, startAt, endAt, planGroupId);
-    await tx.planGroup.update({
-      where: { id: planGroupId },
-      data: {
-        clientId: client.id,
-        startAt,
-        endAt,
-        note: parsed.data.note || null,
-        contact: parsed.data.contact || null,
-        expectedInstaller,
-        expectedInstallerOtherText: otherTextForCheck,
-      },
-    });
-  });
 
   revalidatePath("/plan");
   return { success: true };
@@ -241,37 +158,23 @@ export async function movePlanGroup(
     return { error: "Konec mora biti po začetku." };
   }
 
-  const existing = await prisma.planGroup.findUnique({ where: { id: planGroupId } });
-  if (!existing) return { error: "Dogodek ne obstaja." };
-
-  await prisma.$transaction(async (tx) => {
-    await pushOverlappingInstallerEvents(
-      tx,
-      existing.expectedInstaller,
-      existing.expectedInstallerOtherText,
-      startAt,
-      endAt,
-      planGroupId
-    );
-    await tx.planGroup.update({ where: { id: planGroupId }, data: { startAt, endAt } });
-  });
+  try {
+    await planApi.movePlanGroup(planGroupId, startAt, endAt);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
   revalidatePath("/plan");
 }
 
 export async function deletePlanGroup(planGroupId: string): Promise<{ error?: string } | undefined> {
   await requirePermission("canManagePlan");
 
-  const existing = await prisma.planGroup.findUnique({
-    where: { id: planGroupId },
-    include: { tasks: { select: { workOrderId: true } } },
-  });
-  if (!existing) return { error: "Dogodek ne obstaja." };
-
-  if (existing.tasks.some((t) => t.workOrderId)) {
-    return { error: "Dogodka ni mogoče izbrisati, ker vsebuje že opravljen nalog." };
+  // Dogodka z že opravljenim nalogom API ne izbriše (sporočilo vrne v napaki).
+  try {
+    await planApi.deletePlanGroup(planGroupId);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
   }
-
-  await prisma.planGroup.delete({ where: { id: planGroupId } });
   revalidatePath("/plan");
 }
 
@@ -282,9 +185,6 @@ export async function addPlannedTask(
 ): Promise<PlanActionState> {
   await requirePermission("canManagePlan");
 
-  const group = await prisma.planGroup.findUnique({ where: { id: planGroupId } });
-  if (!group) return { error: "Dogodek ne obstaja." };
-
   const parsed = plannedTaskSchema.safeParse({
     vehiclePlate: formData.get("vehiclePlate"),
     type: formData.get("type") || "",
@@ -294,14 +194,15 @@ export async function addPlannedTask(
     return { error: parsed.error.issues[0]?.message ?? "Neveljavni podatki." };
   }
 
-  await prisma.plannedTask.create({
-    data: {
-      planGroupId,
+  try {
+    await planApi.addPlannedTask(planGroupId, {
       vehiclePlate: parsed.data.vehiclePlate,
       type: parsed.data.type || null,
       note: parsed.data.note || null,
-    },
-  });
+    });
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
 
   revalidatePath("/plan");
   return { success: true };
@@ -310,10 +211,11 @@ export async function addPlannedTask(
 export async function deletePlannedTask(taskId: string): Promise<{ error?: string } | undefined> {
   await requirePermission("canManagePlan");
 
-  const task = await prisma.plannedTask.findUnique({ where: { id: taskId } });
-  if (!task) return { error: "Nalog ne obstaja." };
-  if (task.workOrderId) return { error: "Opravljenega naloga ni mogoče izbrisati." };
-
-  await prisma.plannedTask.delete({ where: { id: taskId } });
+  // Opravljenega planiranega naloga API ne izbriše (sporočilo vrne v napaki).
+  try {
+    await planApi.deletePlannedTask(taskId);
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
   revalidatePath("/plan");
 }

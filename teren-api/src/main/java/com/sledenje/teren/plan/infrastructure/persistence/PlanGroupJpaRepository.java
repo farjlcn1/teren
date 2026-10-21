@@ -10,6 +10,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface PlanGroupJpaRepository extends JpaRepository<PlanGroupJpaEntity, String> {
 
+    @Query("""
+            SELECT g FROM PlanGroupJpaEntity g JOIN FETCH g.client
+            WHERE g.startAt < :to AND g.endAt > :from
+            ORDER BY g.startAt ASC, g.id ASC
+            """)
+    List<PlanGroupJpaEntity> findOverlapping(@Param("from") Instant from, @Param("to") Instant to);
+
     // Prazno ime monterja (null) se ujema samo z dogodki brez imena, kot v Prismi.
     @Query("""
             SELECT g FROM PlanGroupJpaEntity g
