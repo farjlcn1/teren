@@ -1,11 +1,11 @@
 # Testno okolje Teren: aplikacija (Next.js) + API (Spring Boot) + lokalna testna baza.
 #
-#   docker compose up -d --build                       # zagon (db, teren, api)
-#   docker compose --profile seed run --rm teren-seed  # prvi admin uporabnik
-#   docker compose --profile tunnel up -d              # + Cloudflare tunel za teren.farjolcn.com
+#   docker compose up -d --build              # zagon (db → api → teren)
+#   docker compose logs api | grep "prvi admin"  # geslo prvega admina (samo ob prvem zagonu na prazni bazi)
+#   docker compose --profile tunnel up -d     # + Cloudflare tunel za teren.farjolcn.com
 #
-# Ob selitvi na drug strežnik s pravo bazo se servis "db" odstrani,
-# DATABASE_URL in DB_* pa nastavita na pravo bazo (glej README.md).
+# Do baze dostopa samo API, ki ob zagonu z Flywayem ustvari ali posodobi shemo.
+# Za strežnik z zunanjo bazo je pripravljen teren-server/docker-compose.yml (glej README.md).
 name: teren
 
 services:
@@ -27,14 +27,40 @@ services:
       timeout: 5s
       retries: 10
 
-  teren:
-    build: ./teren
+  api:
+    build: ./teren-api
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://teren:${POSTGRES_PASSWORD}@db:5432/teren
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: teren
+      DB_USERNAME: teren
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      API_PUBLIC_URL: http://localhost:8080
+      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
+      # Na prazni bazi API ob zagonu ustvari admina s tem emailom in geslo izpiše v log.
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
+      TZ: Europe/Ljubljana
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    mem_limit: 768m
+    ports:
+      # Za Swagger med testiranjem (http://localhost:8080/swagger-ui.html). V produkciji se izpusti.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - api_logs:/app/logs
+
+  teren:
+    build: ./teren
+    restart: unless-stopped
+    depends_on:
+      # Aplikacija vse podatke bere in piše prek API-ja.
+      api:
+        condition: service_healthy
+    environment:
       SESSION_SECRET: ${SESSION_SECRET:?manjka SESSION_SECRET v .env}
       UPLOADS_DIR: /app/uploads
       NEXT_PUBLIC_APP_URL: ${APP_URL:-https://teren.farjolcn.com}
@@ -58,46 +84,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-
-  api:
-    build: ./teren-api
-    restart: unless-stopped
-    depends_on:
-      # Shemo zaenkrat ustvari teren (prisma migrate deploy ob zagonu); API jo nato samo preveri.
-      teren:
-        condition: service_healthy
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: teren
-      DB_USERNAME: teren
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      API_PUBLIC_URL: http://localhost:8080
-      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
-      APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
-      TZ: Europe/Ljubljana
-      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
-    mem_limit: 768m
-    ports:
-      # Za Swagger med testiranjem (http://localhost:8080/swagger-ui.html). V produkciji se izpusti.
-      - "127.0.0.1:8080:8080"
-    volumes:
-      - api_logs:/app/logs
-
-  # Enkraten zagon: ustvari prvega admin uporabnika in izpiše njegovo geslo.
-  teren-seed:
-    profiles: ["seed"]
-    build:
-      context: ./teren
-      target: builder
-    depends_on:
-      teren:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://teren:${POSTGRES_PASSWORD}@db:5432/teren
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
-    # Prazen SEED_ADMIN_EMAIL bi ustvaril uporabnika brez e-pošte, zato ga preverimo pred zagonom.
-    command: ["sh", "-c", "test -n \"$$SEED_ADMIN_EMAIL\" || { echo 'Nastavi SEED_ADMIN_EMAIL v .env'; exit 1; }; npx tsx prisma/seed.ts"]
 
   # Javni dostop prek Cloudflare tunela (teren.farjolcn.com -> http://teren:3000).
   tunnel:

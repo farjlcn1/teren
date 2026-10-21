@@ -7,10 +7,16 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:teren}
     username: ${DB_USERNAME:teren}
     password: ${DB_PASSWORD:}
+  flyway:
+    # Shemo upravlja Flyway (src/main/resources/db/migration). Obstoječo bazo iz Prisme označi
+    # PrismaBaselineMigrationStrategy; samodejnega baseline za neznane neprazne baze ni.
+    baseline-on-migrate: false
+    baseline-version: 1
+    baseline-description: Shema iz Prisme
   jpa:
     open-in-view: false
     hibernate:
-      # Shemo zaenkrat ustvarja Prisma (aplikacija teren); API jo ob zagonu samo preveri.
+      # Shemo ustvari Flyway; Hibernate ob zagonu samo preveri, da se entitete ujemajo s tabelami.
       ddl-auto: validate
       naming:
         # Prisma stolpce poimenuje v camelCase z narekovaji ("createdAt"), zato brez pretvorbe v snake_case.
@@ -52,6 +58,9 @@ teren:
     token: ${API_TOKEN:}
     # Dan naloga (dnevna številka DDMMLLLLNNN) se določi po tem časovnem pasu.
     time-zone: ${APP_TIME_ZONE:Europe/Ljubljana}
+  first-admin:
+    # Na prazni bazi se ob zagonu ustvari admin s tem emailom; geslo se izpiše v log.
+    email: ${SEED_ADMIN_EMAIL:}
 
 # Pot do zunanje konfiguracije logiranja se lahko poda z LOGGING_CONFIG=/pot/do/logback.xml
 logging:

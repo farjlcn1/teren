@@ -1,6 +1,6 @@
--- Shema baze Teren za teste API-ja.
--- Sestavljena iz Prisma migracij repozitorija farjlcn1/teren (commit e01b04a, mapa prisma/migrations).
--- Dokler shemo upravlja Prisma, je treba datoteko ob vsaki novi migraciji posodobiti (glej README).
+-- Izhodiščna shema baze Teren: vseh 11 Prisma migracij, kot jih je imela aplikacija teren do prehoda na API
+-- (zadnja 20260928120000_move_installer_to_plan_group). Od tu naprej shemo upravlja Flyway v teren-api.
+-- Obstoječo bazo, ki jo je ustvarila Prisma, PrismaBaselineMigrationStrategy označi kot V1 brez izvajanja.
 
 -- ==== 20260724073207_init ====
 -- CreateEnum

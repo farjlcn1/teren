@@ -9,7 +9,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Testi tečejo na lastni, začasni bazi v Dockerju (ista verzija kot v docker-compose.yml).
- * Shema se ustvari iz db/teren-schema.sql, ki je sestavljena iz Prisma migracij.
+ * Shemo ustvari Flyway iz src/main/resources/db/migration, tako kot v pravi bazi.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
@@ -24,8 +24,7 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgresContainer() {
-        return new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"))
-                .withInitScript("db/teren-schema.sql");
+        return new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
     }
 
     @Bean

@@ -152,9 +152,12 @@ public class WorkOrderRepositoryImpl implements WorkOrderRepository {
             if (attachments.signatureUrl() != null) {
                 entity.sign(attachments.signatureUrl(), addedAt);
             }
-            for (PhotoEntry photo : attachments.photos()) {
+            // Fotografije se prikazujejo po času nalaganja; zamik za milisekundo ohrani vrstni red iz obrazca.
+            List<PhotoEntry> photos = attachments.photos();
+            for (int index = 0; index < photos.size(); index++) {
+                PhotoEntry photo = photos.get(index);
                 entity.getPhotos().add(new WorkOrderPhotoJpaEntity(
-                        newId(), entity, photo.filePath(), photo.takenAt(), addedAt));
+                        newId(), entity, photo.filePath(), photo.takenAt(), addedAt.plusMillis(index)));
             }
             return true;
         }).orElse(false);

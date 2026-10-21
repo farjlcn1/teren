@@ -1,14 +1,7 @@
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const BCRYPT_ROUNDS = 12;
-
-// Samo za prisma/seed.ts (prvi admin). Gesla v aplikaciji preverja in zgošči API.
-export function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
-
 // Vsaj 8 znakov, vsaj 1 velika začetnica, vsaj 1 številka, vsaj 1 poseben znak.
+// Enaka pravila preveri tudi API (PasswordPolicy), ki geslo tudi zgošči.
 export const passwordSchema = z
   .string()
   .min(8, "Geslo mora imeti vsaj 8 znakov")
