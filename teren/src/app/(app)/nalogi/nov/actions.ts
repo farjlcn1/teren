@@ -3,11 +3,10 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
-import { generateIdent } from "@/lib/work-orders/ident";
 import { savePhoto, saveSignature } from "@/lib/uploads";
-import { ensureVehicleExists } from "@/lib/vehicles";
+import { apiErrorMessage } from "@/lib/api/http";
+import { addWorkOrderAttachments, createWorkOrder as createWorkOrderInApi } from "@/lib/api/work-orders";
 
 const installerSchema = z.object({
   name: z.enum(["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"]),
@@ -135,110 +134,43 @@ export async function createWorkOrder(
 
   const photos = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
 
-  const orderDate = new Date();
-  const ident = await generateIdent(orderDate);
-
-  const workOrder = await prisma.workOrder.create({
-    data: {
-      ident,
-      orderDate,
-      type: data.type,
-      difficulty: data.difficulty,
-      clientId: data.clientId,
-      vehiclePlate: data.vehiclePlate,
-      vehicleBrand: data.vehicleBrand,
-      vehicleModel: data.vehicleModel,
-      vehicleYear: data.vehicleYear,
-      imei: data.imei,
-      imeiPrev: data.imeiPrev || null,
-      culprit: data.culprit || null,
-      comment: data.comment || null,
-      createdById: user.id,
-      installers: { create: data.installers },
-      options: { create: data.options },
-      deviceModels: { create: data.deviceModels },
-    },
-  });
-
-  await ensureVehicleExists(data.vehiclePlate);
-
-  const signaturePath = signature ? await saveSignature(workOrder.id, signature) : null;
-  const savedPhotos = await Promise.all(photos.map((file, i) => savePhoto(workOrder.id, file, i)));
-
-  const now = new Date();
-  await prisma.workOrder.update({
-    where: { id: workOrder.id },
-    data: {
-      ...(signaturePath ? { signatureUrl: signaturePath, signedAt: now, lockedAt: now } : {}),
-      photos: { create: savedPhotos.map((p) => ({ filePath: p.filePath, takenAt: p.takenAt })) },
-    },
-  });
-
   const plannedTaskId = formData.get("plannedTaskId");
-  if (typeof plannedTaskId === "string" && plannedTaskId) {
-    // updateMany namesto findUnique+update: če je nalog med tem že prevzel kdo drug, izbrisan, ali
-    // se stranka ne ujema (poskus prirejanja skritega polja), preprosto ne ujame nobene vrstice --
-    // nikoli ne zavrne ali izgubi naloga, ki ga je monter pravkar ustvaril s sliko in podpisom.
-    await prisma.plannedTask.updateMany({
-      where: { id: plannedTaskId, workOrderId: null, planGroup: { clientId: data.clientId } },
-      data: { workOrderId: workOrder.id },
-    });
-  } else {
-    // Nalog ni nastal iz obstoječega plana (monter ga je ustvaril neposredno) -- da tudi tako delo
-    // pristane na zavihku Plan, samodejno ustvari dogodek in nalog znotraj njega, že označen kot
-    // opravljen (workOrderId je nastavljen takoj), saj je delo v resnici že opravljeno. Privzeto
-    // 1h okno namesto ničelnega trajanja; če isti monter pri isti stranki naredi več nalogov
-    // zaporedoma (naslednji pride, preden se prejšnje okno izteče), se združijo v en dogodek.
-    const primaryInstaller = data.installers[0];
-    const otherText = primaryInstaller.name === "OSTALO" ? primaryInstaller.otherText || null : null;
-    const oneHourLater = new Date(orderDate.getTime() + 60 * 60 * 1000);
 
-    const mergeCandidate = await prisma.planGroup.findFirst({
-      where: {
+  // API dodeli številko naloga, doda vozilo, če ga še ni, in nalog zabeleži v planu: označi planirani nalog
+  // ali ga doda k dogodku istega monterja pri isti stranki (oziroma ustvari nov enourni dogodek).
+  let workOrderId: string;
+  try {
+    ({ id: workOrderId } = await createWorkOrderInApi({
+      details: {
+        type: data.type,
+        difficulty: data.difficulty,
         clientId: data.clientId,
-        expectedInstaller: primaryInstaller.name,
-        expectedInstallerOtherText: otherText,
-        endAt: { gte: orderDate },
+        vehiclePlate: data.vehiclePlate,
+        vehicleBrand: data.vehicleBrand,
+        vehicleModel: data.vehicleModel,
+        vehicleYear: data.vehicleYear,
+        imei: data.imei,
+        imeiPrev: data.imeiPrev || null,
+        culprit: data.culprit || null,
+        comment: data.comment || null,
+        installers: data.installers,
+        options: data.options,
       },
-      orderBy: { endAt: "desc" },
-    });
+      deviceModels: data.deviceModels,
+      createdById: user.id,
+      plannedTaskId: typeof plannedTaskId === "string" && plannedTaskId ? plannedTaskId : null,
+    }));
+  } catch (e) {
+    return { error: apiErrorMessage(e) };
+  }
 
-    if (mergeCandidate) {
-      const newEndAt = oneHourLater > mergeCandidate.endAt ? oneHourLater : mergeCandidate.endAt;
-      await prisma.$transaction([
-        prisma.plannedTask.create({
-          data: {
-            planGroupId: mergeCandidate.id,
-            vehiclePlate: data.vehiclePlate,
-            type: data.type,
-            note: data.comment || null,
-            workOrderId: workOrder.id,
-          },
-        }),
-        prisma.planGroup.update({ where: { id: mergeCandidate.id }, data: { endAt: newEndAt } }),
-      ]);
-    } else {
-      await prisma.planGroup.create({
-        data: {
-          clientId: data.clientId,
-          startAt: orderDate,
-          endAt: oneHourLater,
-          expectedInstaller: primaryInstaller.name,
-          expectedInstallerOtherText: otherText,
-          createdById: user.id,
-          tasks: {
-            create: {
-              vehiclePlate: data.vehiclePlate,
-              type: data.type,
-              note: data.comment || null,
-              workOrderId: workOrder.id,
-            },
-          },
-        },
-      });
-    }
+  // Datoteke ostanejo na disku aplikacije (mapa naloga), API dobi samo poti.
+  const signaturePath = signature ? await saveSignature(workOrderId, signature) : null;
+  const savedPhotos = await Promise.all(photos.map((file, i) => savePhoto(workOrderId, file, i)));
+  if (signaturePath || savedPhotos.length > 0) {
+    await addWorkOrderAttachments(workOrderId, { signatureUrl: signaturePath, photos: savedPhotos });
   }
   revalidatePath("/plan");
 
-  redirect(`/nalogi/${workOrder.id}`);
+  redirect(`/nalogi/${workOrderId}`);
 }

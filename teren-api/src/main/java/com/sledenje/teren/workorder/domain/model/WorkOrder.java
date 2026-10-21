@@ -1,5 +1,6 @@
 package com.sledenje.teren.workorder.domain.model;
 
+import com.sledenje.teren.common.domain.model.WorkOrderType;
 import java.time.Instant;
 import java.util.List;
 

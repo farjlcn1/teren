@@ -16,6 +16,10 @@ public class WorkOrderEditJpaEntity {
     @Id
     private String id;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "workOrderId", nullable = false)
+    private WorkOrderJpaEntity workOrder;
+
     @Column(nullable = false)
     private Instant editedAt;
 
@@ -27,6 +31,15 @@ public class WorkOrderEditJpaEntity {
     private String changesJson;
 
     protected WorkOrderEditJpaEntity() {
+    }
+
+    public WorkOrderEditJpaEntity(String id, WorkOrderJpaEntity workOrder, Instant editedAt,
+            WorkOrderUserJpaEntity editedBy, String changesJson) {
+        this.id = id;
+        this.workOrder = workOrder;
+        this.editedAt = editedAt;
+        this.editedBy = editedBy;
+        this.changesJson = changesJson;
     }
 
     public String getId() {

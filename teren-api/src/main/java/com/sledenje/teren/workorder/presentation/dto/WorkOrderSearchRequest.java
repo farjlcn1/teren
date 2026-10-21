@@ -1,11 +1,11 @@
 package com.sledenje.teren.workorder.presentation.dto;
 
+import com.sledenje.teren.common.domain.model.InstallerName;
+import com.sledenje.teren.common.domain.model.WorkOrderType;
 import com.sledenje.teren.workorder.domain.model.Culprit;
 import com.sledenje.teren.workorder.domain.model.DeviceModel;
 import com.sledenje.teren.workorder.domain.model.Difficulty;
-import com.sledenje.teren.workorder.domain.model.InstallerName;
 import com.sledenje.teren.workorder.domain.model.OptionType;
-import com.sledenje.teren.workorder.domain.model.WorkOrderType;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

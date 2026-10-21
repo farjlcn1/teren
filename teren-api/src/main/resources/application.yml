@@ -50,6 +50,8 @@ teren:
     public-url: ${API_PUBLIC_URL:http://localhost:8080}
     # Skupni žeton z aplikacijo Teren (Authorization: Bearer ...). Brez njega se API ne zažene.
     token: ${API_TOKEN:}
+    # Dan naloga (dnevna številka DDMMLLLLNNN) se določi po tem časovnem pasu.
+    time-zone: ${APP_TIME_ZONE:Europe/Ljubljana}
 
 # Pot do zunanje konfiguracije logiranja se lahko poda z LOGGING_CONFIG=/pot/do/logback.xml
 logging:

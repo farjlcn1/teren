@@ -1,6 +1,6 @@
 package com.sledenje.teren.workorder.presentation.dto;
 
-import com.sledenje.teren.workorder.domain.model.InstallerName;
+import com.sledenje.teren.common.domain.model.InstallerName;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Monter")

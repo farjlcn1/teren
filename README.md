@@ -147,6 +147,11 @@ zgodovino urejanj, seznam IMEI-jev. Stranko in avtorja bere prek lastnih entitet
 (`WorkOrderClientJpaEntity`, `WorkOrderUserJpaEntity`) na tabelah `clients` in `users`. Datoteke (fotografije,
 podpis) ostanejo na disku aplikacije; API hrani samo poti, PDF in Excel še vedno izdela aplikacija.
 
+Vnos naloga (`POST /api/v1/work-orders`) je ena transakcija: dnevna številka (`DDMMLLLLNNN`, dan po
+`APP_TIME_ZONE`, privzeto Europe/Ljubljana), nalog z monterji, opcijami in napravami, vozilo (če ga še ni) in
+zapis v planu (planirani nalog ali dogodek istega monterja pri stranki). Aplikacija nato shrani fotografije in
+podpis na disk in poti sporoči na `/attachments`. Urejanje (`PUT`) zgodovino sprememb izračuna v API-ju.
+
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
 ## Baza in shema – pomembno
@@ -191,7 +196,7 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 | 2 | **Vozila** (registracije) in sinhronizacija vozil | narejeno |
 | 3 | **Uporabniki**, prijava in seje | narejeno |
 | 4a | **Delovni nalogi – branje**: seznam s filtri, podrobnosti, PDF, oba izvoza | narejeno |
-| 4b | **Delovni nalogi – pisanje**: vnos, urejanje z zgodovino, fotografije, podpis, e-pošta | |
+| 4b | **Delovni nalogi – pisanje**: vnos, urejanje z zgodovino, fotografije, podpis, e-pošta | narejeno |
 | 5 | **Plan**: dogodki in planirana opravila | |
 | 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |
 

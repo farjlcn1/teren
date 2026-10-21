@@ -27,6 +27,11 @@ public interface VehicleRepository {
     void deleteVehicleById(String vehicleId);
 
     /**
+     * Doda vozilo, če registrske številke še ni. Ne vrže napake, če jo hkrati doda nekdo drug.
+     */
+    void insertVehicleIfMissing(String plate, VehicleSource source);
+
+    /**
      * Vozila z znanim {@code externalId} posodobi, ostala doda z izvorom {@code SYNC}. Vse v eni transakciji.
      *
      * @throws VehiclePlateAlreadyExistsException če ima registrsko številko že drugo vozilo; nič se ne shrani

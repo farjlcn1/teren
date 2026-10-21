@@ -129,3 +129,47 @@ export async function findWorkOrder(id: string): Promise<WorkOrderDetail | null>
 export function listWorkOrderImeis(): Promise<string[]> {
   return apiRequest<string[]>(`${BASE}/imeis`);
 }
+
+// Vsebina naloga pri vnosu in urejanju. Neizpolnjena neobvezna polja so null.
+export type WorkOrderDetailsInput = {
+  type: string;
+  difficulty: string;
+  clientId: string;
+  vehiclePlate: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleYear: number;
+  imei: string;
+  imeiPrev: string | null;
+  culprit: string | null;
+  comment: string | null;
+  installers: { name: string; otherText?: string }[];
+  options: { optionType: string; comment?: string }[];
+};
+
+// API v eni transakciji dodeli številko naloga, shrani nalog, doda vozilo in nalog zabeleži v planu.
+export function createWorkOrder(input: {
+  details: WorkOrderDetailsInput;
+  deviceModels: { deviceModel: string; comment?: string }[];
+  createdById: string;
+  plannedTaskId: string | null;
+}): Promise<{ id: string; ident: string }> {
+  return apiRequest<{ id: string; ident: string }>(BASE, { method: "POST", body: input });
+}
+
+// Datoteke shrani aplikacija na svoj disk; API dobi samo poti. Podpis nalog zaklene.
+export function addWorkOrderAttachments(
+  id: string,
+  attachments: { signatureUrl: string | null; photos: { filePath: string; takenAt: Date | null }[] }
+): Promise<void> {
+  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}/attachments`, { method: "POST", body: attachments });
+}
+
+// Spremembe API zapiše v zgodovino urejanj (monterji in opcije se zamenjajo v celoti).
+export function updateWorkOrder(id: string, input: { details: WorkOrderDetailsInput; editedById: string }): Promise<void> {
+  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: input });
+}
+
+export function markWorkOrderSent(id: string): Promise<void> {
+  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}/sent`, { method: "POST" });
+}
