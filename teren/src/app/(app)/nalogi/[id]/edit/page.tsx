@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { findWorkOrder } from "@/lib/api/work-orders";
 import { listClientOptions } from "@/lib/api/clients";
 import { listVehicleOptions } from "@/lib/api/vehicles";
 import { EditWorkOrderForm } from "./edit-work-order-form";
@@ -10,7 +10,7 @@ export default async function EditWorkOrderPage({ params }: { params: Promise<{ 
   const { id } = await params;
 
   const [order, clients, vehicles] = await Promise.all([
-    prisma.workOrder.findUnique({ where: { id }, include: { installers: true, options: true } }),
+    findWorkOrder(id),
     listClientOptions(),
     listVehicleOptions(),
   ]);

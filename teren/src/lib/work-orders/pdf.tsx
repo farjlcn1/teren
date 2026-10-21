@@ -1,6 +1,6 @@
 import "server-only";
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
-import { prisma } from "@/lib/db";
+import type { WorkOrderDetail } from "@/lib/api/work-orders";
 import { readUploadedFile } from "@/lib/uploads";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -96,12 +96,8 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export async function generateWorkOrderPdf(workOrderId: string): Promise<Buffer> {
-  const order = await prisma.workOrder.findUniqueOrThrow({
-    where: { id: workOrderId },
-    include: { client: true, installers: true, options: true, deviceModels: true, photos: true, createdBy: true },
-  });
-
+// Nalog prebere klicatelj (findWorkOrder), ki mora prej preveriti tudi pravice uporabnika.
+export async function generateWorkOrderPdf(order: WorkOrderDetail): Promise<Buffer> {
   const photoBuffers = await Promise.all(
     order.photos.map(async (p) => ({
       id: p.id,

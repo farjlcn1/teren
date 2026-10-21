@@ -141,6 +141,12 @@ združljivo z obstoječimi hashi iz bcryptjs), zgoščeno geslo nikoli ne zapust
 vedno ustvari aplikacija; ob vsakem zahtevku prebere uporabnika s pravicami iz API-ja, da odvzem pravic velja takoj.
 Omejevanje poskusov prijave (5 poskusov, nato 15 min) je v aplikaciji, pred klicem API-ja.
 
+Kontekst **workorder** (`/api/v1/work-orders`): seznam s filtri (datum od–do, stranka, del registrske ali IMEI-ja,
+vrsta, zahtevnost, monter, opcija, model naprave, krivec, avtor) in razvrščanjem, podrobnosti s fotografijami in
+zgodovino urejanj, seznam IMEI-jev. Stranko in avtorja bere prek lastnih entitet samo za branje
+(`WorkOrderClientJpaEntity`, `WorkOrderUserJpaEntity`) na tabelah `clients` in `users`. Datoteke (fotografije,
+podpis) ostanejo na disku aplikacije; API hrani samo poti, PDF in Excel še vedno izdela aplikacija.
+
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
 ## Baza in shema – pomembno
@@ -184,7 +190,8 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 | 1 | Žeton med aplikacijo in API-jem (`API_TOKEN`), odjemalec `teren/src/lib/api/`, **stranke** in sinhronizacija strank | narejeno |
 | 2 | **Vozila** (registracije) in sinhronizacija vozil | narejeno |
 | 3 | **Uporabniki**, prijava in seje | narejeno |
-| 4 | **Delovni nalogi**: vnos, urejanje, fotografije, PDF, izvoz, e-pošta | |
+| 4a | **Delovni nalogi – branje**: seznam s filtri, podrobnosti, PDF, oba izvoza | narejeno |
+| 4b | **Delovni nalogi – pisanje**: vnos, urejanje z zgodovino, fotografije, podpis, e-pošta | |
 | 5 | **Plan**: dogodki in planirana opravila | |
 | 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |
 

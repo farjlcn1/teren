@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
 import { listVehicleOptions } from "@/lib/api/vehicles";
-import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
+import { listWorkOrderImeis, listWorkOrders } from "@/lib/api/work-orders";
+import { buildWorkOrderSearch, type WorkOrderFilters } from "@/lib/work-orders/query";
 import { ColumnPicker, type ColumnDef } from "./column-picker";
 import { AdminExportButton } from "./admin-export-button";
 
@@ -138,17 +138,13 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
   const filters = await searchParams;
   const activeCols = filters.cols?.split(",").filter(Boolean) ?? DEFAULT_COLUMNS;
 
-  const [orders, clients, vehicles, imeiRows] = await Promise.all([
-    prisma.workOrder.findMany({
-      ...buildWorkOrderQuery(filters, user),
-      include: { client: true, installers: true, options: true, deviceModels: true },
-      take: 500,
-    }),
+  const [orders, clients, vehicles, imeis] = await Promise.all([
+    listWorkOrders({ ...buildWorkOrderSearch(filters, user), limit: 500 }),
     listClientOptions(),
     listVehicleOptions(),
-    prisma.workOrder.findMany({ distinct: ["imei"], orderBy: { imei: "asc" }, select: { imei: true } }),
+    // Filter po IMEI je viden samo uporabnikom s pregledom vseh nalogov.
+    user.canViewAllOrders ? listWorkOrderImeis() : Promise.resolve([]),
   ]);
-  const imeis = imeiRows.map((r) => r.imei);
 
   const queryString = new URLSearchParams(
     Object.entries(filters).filter(([, v]) => v) as [string, string][]
