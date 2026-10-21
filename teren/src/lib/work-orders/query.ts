@@ -1,6 +1,6 @@
 import "server-only";
-import type { Prisma, WorkOrderType, Difficulty, InstallerName, OptionType, Culprit, DeviceModel } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/lib/auth/session";
+import type { WorkOrderSearch } from "@/lib/api/work-orders";
 
 export type WorkOrderFilters = {
   from?: string;
@@ -18,54 +18,29 @@ export type WorkOrderFilters = {
   dir?: string;
 };
 
-type SortDir = "asc" | "desc";
+// Datum iz filtra (YYYY-MM-DD) je dan po lokalnem času strežnika (TZ=Europe/Ljubljana); neveljaven datum ne omejuje.
+function localDateTime(date: string | undefined, time: string): Date | undefined {
+  if (!date) return undefined;
+  const value = new Date(`${date}T${time}`);
+  return Number.isNaN(value.getTime()) ? undefined : value;
+}
 
-const SORT_FIELD_MAP: Record<string, (dir: SortDir) => Prisma.WorkOrderOrderByWithRelationInput> = {
-  orderDate: (dir) => ({ orderDate: dir }),
-  ident: (dir) => ({ ident: dir }),
-  vehiclePlate: (dir) => ({ vehiclePlate: dir }),
-  imei: (dir) => ({ imei: dir }),
-  client: (dir) => ({ client: { name: dir } }),
-  type: (dir) => ({ type: dir }),
-  difficulty: (dir) => ({ difficulty: dir }),
-  culprit: (dir) => ({ culprit: dir }),
-};
-
-export function buildWorkOrderQuery(
-  filters: WorkOrderFilters,
-  user: CurrentUser
-): { where: Prisma.WorkOrderWhereInput; orderBy: Prisma.WorkOrderOrderByWithRelationInput } {
-  const where: Prisma.WorkOrderWhereInput = {};
-
-  if (!user.canViewAllOrders) {
-    where.createdById = user.id;
-  }
-
-  if (filters.from || filters.to) {
-    where.orderDate = {};
-    if (filters.from) where.orderDate.gte = new Date(`${filters.from}T00:00:00`);
-    if (filters.to) where.orderDate.lte = new Date(`${filters.to}T23:59:59`);
-  }
-
-  if (filters.clientId) where.clientId = filters.clientId;
-  if (filters.vehiclePlate) where.vehiclePlate = { contains: filters.vehiclePlate, mode: "insensitive" };
-  if (filters.imei) where.imei = { contains: filters.imei };
-  if (filters.type) where.type = filters.type as WorkOrderType;
-  if (filters.difficulty) where.difficulty = filters.difficulty as Difficulty;
-  if (filters.installer) {
-    where.installers = { some: { name: filters.installer as InstallerName } };
-  }
-  if (filters.option) {
-    where.options = { some: { optionType: filters.option as OptionType } };
-  }
-  if (filters.deviceModel) {
-    where.deviceModels = { some: { deviceModel: filters.deviceModel as DeviceModel } };
-  }
-  if (filters.culprit) where.culprit = filters.culprit as Culprit;
-
-  const dir: SortDir = filters.dir === "asc" ? "asc" : "desc";
-  const sortField = filters.sort && SORT_FIELD_MAP[filters.sort] ? filters.sort : "orderDate";
-  const orderBy = SORT_FIELD_MAP[sortField](dir);
-
-  return { where, orderBy };
+// Filtri s strani /nalogi v poizvedbo za API. Uporabnik brez pregleda vseh nalogov vidi samo svoje.
+export function buildWorkOrderSearch(filters: WorkOrderFilters, user: CurrentUser): WorkOrderSearch {
+  return {
+    from: localDateTime(filters.from, "00:00:00"),
+    to: localDateTime(filters.to, "23:59:59"),
+    clientId: filters.clientId,
+    vehiclePlate: filters.vehiclePlate,
+    imei: filters.imei,
+    type: filters.type,
+    difficulty: filters.difficulty,
+    installer: filters.installer,
+    option: filters.option,
+    deviceModel: filters.deviceModel,
+    culprit: filters.culprit,
+    createdById: user.canViewAllOrders ? undefined : user.id,
+    sort: filters.sort,
+    dir: filters.dir,
+  };
 }

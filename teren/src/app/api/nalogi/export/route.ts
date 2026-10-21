@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
-import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
+import { listWorkOrders } from "@/lib/api/work-orders";
+import { buildWorkOrderSearch, type WorkOrderFilters } from "@/lib/work-orders/query";
 
 const TYPE_LABELS: Record<string, string> = {
   MONTAZA: "Montaža",
@@ -49,13 +49,7 @@ export async function GET(request: NextRequest) {
   const user = await requirePermission("canExportData");
 
   const filters = Object.fromEntries(request.nextUrl.searchParams) as WorkOrderFilters;
-  const { where, orderBy } = buildWorkOrderQuery(filters, user);
-
-  const orders = await prisma.workOrder.findMany({
-    where,
-    orderBy,
-    include: { client: true, installers: true, options: true, createdBy: true },
-  });
+  const orders = await listWorkOrders(buildWorkOrderSearch(filters, user));
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Delovni nalogi");

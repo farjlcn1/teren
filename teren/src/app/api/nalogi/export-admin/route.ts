@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
+import { listWorkOrders } from "@/lib/api/work-orders";
 
 const TYPE_LABELS: Record<string, string> = {
   MONTAZA: "Montaža",
@@ -69,10 +69,12 @@ export async function GET(request: NextRequest) {
     to = new Date(from.getTime() + 24 * 60 * 60 * 1000 - 1);
   }
 
-  const orders = await prisma.workOrder.findMany({
-    where: { orderDate: { gte: from, lte: to }, ...(user.canViewAllOrders ? {} : { createdById: user.id }) },
-    orderBy: { orderDate: "asc" },
-    include: { client: true, installers: true, options: true, deviceModels: true, createdBy: true },
+  const orders = await listWorkOrders({
+    from,
+    to,
+    createdById: user.canViewAllOrders ? undefined : user.id,
+    sort: "orderDate",
+    dir: "asc",
   });
 
   const workbook = new ExcelJS.Workbook();

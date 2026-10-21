@@ -1,6 +1,7 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { generateWorkOrderPdf } from "@/lib/work-orders/pdf";
+import { findWorkOrder } from "@/lib/api/work-orders";
 import { prisma } from "@/lib/db";
 
 function getTransport() {
@@ -24,12 +25,10 @@ function getTransport() {
 }
 
 export async function sendWorkOrderEmail(workOrderId: string, toEmail: string) {
-  const order = await prisma.workOrder.findUniqueOrThrow({
-    where: { id: workOrderId },
-    include: { client: true },
-  });
+  const order = await findWorkOrder(workOrderId);
+  if (!order) throw new Error("Nalog ne obstaja.");
 
-  const pdfBuffer = await generateWorkOrderPdf(workOrderId);
+  const pdfBuffer = await generateWorkOrderPdf(order);
   const transport = getTransport();
 
   await transport.sendMail({

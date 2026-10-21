@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { findWorkOrder } from "@/lib/api/work-orders";
 import { SendEmailForm } from "./send-email-form";
 import { ImageLightbox } from "@/components/image-lightbox";
 
@@ -43,18 +43,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const user = await requireUser();
   const { id } = await params;
 
-  const order = await prisma.workOrder.findUnique({
-    where: { id },
-    include: {
-      client: true,
-      installers: true,
-      options: true,
-      deviceModels: true,
-      photos: true,
-      createdBy: true,
-      edits: { include: { editedBy: true }, orderBy: { editedAt: "desc" } },
-    },
-  });
+  const order = await findWorkOrder(id);
 
   if (!order) notFound();
 
