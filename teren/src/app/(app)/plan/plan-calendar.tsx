@@ -1,0 +1,872 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition, useActionState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ClientCombobox } from "@/components/client-combobox";
+import { PlateCombobox } from "@/components/plate-combobox";
+import { DateTimeInput } from "@/components/date-input";
+import { createPlanGroup, movePlanGroup } from "./actions";
+import { GroupPopup } from "./group-popup";
+
+const PALETTE = [
+  "#2563eb", "#9333ea", "#0d9488", "#db2777", "#d97706",
+  "#4338ca", "#0891b2", "#e11d48", "#65a30d", "#c026d3",
+];
+const DAY_LABELS = ["Pon", "Tor", "Sre", "Čet", "Pet", "Sob", "Ned"];
+const PX_PER_HOUR = 80;
+// Najkrajše prikazano trajanje bloka na koledarju (tudi za dogodek brez pravega trajanja) -- isti
+// prag mora uporabiti tudi packGroupsForDay spodaj, sicer lahko dva dogodka, ki se v surovih časih
+// komaj ne prekrivata, po tem vizualnem raztegu vseeno pristaneta v isti stezi in se prekrijeta.
+const MIN_DISPLAY_HOURS = 0.25;
+// Urnik prikazuje samo 6h-18h (najpogostejši delovni čas) -- manj praznega prostora za skrolanje.
+// Dogodek izven tega okna se ne izgubi (dnevno članstvo spodaj še vedno šteje cel dan), le vizualno
+// se obreže na rob vidnega okna.
+const DAY_START_HOUR = 6;
+const DAY_END_HOUR = 18;
+const HOURS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => i + DAY_START_HOUR);
+
+// d.toISOString() vrne UTC datum, d.setDate/getDate pa delata v lokalnem času -- lokalna polnoč
+// pade na prejšnji dan v UTC, zato bi toISOString().slice(0,10) tu vrnil napačen dan. Za "lokalni
+// koledarski dan" sestavimo niz iz lokalnih komponent, ne iz UTC.
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Vrednost "datetime-local" nima conske -- new Date(...) jo NA STRANI BRSKALNIKA pravilno tolmaci
+// kot lokalni cas uporabnika. Vsebnik teče v UTC, zato mora priti do njega ze pretvorjena v pravi
+// UTC trenutek (namesto da bi streznik isti niz sam narobe tolmacil kot svoj lokalni UTC cas).
+export function localDateTimeToIso(value: string): string {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+// Obratna smer od localDateTimeToIso -- za predizpolnitev datetime-local vnosa ob urejanju
+// obstoječega dogodka (shranjeni startAt/endAt sta pravi UTC ISO, vnosno polje pa pričakuje
+// lokalni "YYYY-MM-DDTHH:mm").
+export function isoToLocalDateTimeStr(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${hh}:${mm}`;
+}
+
+function hashToIndex(input: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  return Math.abs(hash) % mod;
+}
+
+function fieldClass() {
+  return "mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100";
+}
+
+export const INSTALLERS = ["SIMON", "VITO", "SERGEJ", "GREGOR", "KLEMEN", "OSTALO"];
+
+export function installerLabel(name: string) {
+  return name === "OSTALO" ? "Ostalo" : name.charAt(0) + name.slice(1).toLowerCase();
+}
+
+export const TASK_TYPES = [
+  { value: "MONTAZA", label: "Montaža" },
+  { value: "DEMONTAZA", label: "Demontaža" },
+  { value: "INTERVENCIJA", label: "Intervencija" },
+  { value: "PREMONTAZA", label: "Premontaža" },
+  { value: "OSTALO", label: "Ostalo" },
+];
+
+export function taskTypeLabel(type: string) {
+  return TASK_TYPES.find((t) => t.value === type)?.label ?? type;
+}
+
+export type PlannedTaskItem = {
+  id: string;
+  vehiclePlate: string;
+  type: string | null;
+  note: string | null;
+  workOrderId: string | null;
+};
+
+export type PlanGroupItem = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  startAt: string;
+  endAt: string;
+  note: string | null;
+  contact: string | null;
+  expectedInstaller: string | null;
+  expectedInstallerOtherText: string | null;
+  tasks: PlannedTaskItem[];
+};
+
+type PositionedGroup = PlanGroupItem & { lane: number; laneCount: number };
+
+// Dogodku vrne "efektivni" konec za razporejanje v steze -- vsaj MIN_DISPLAY_HOURS po začetku,
+// enako spodnji meji, ki jo pri risanju uporabi durationHours. Brez tega bi npr. dva dogodka z
+// ničelnim/zelo kratkim surovim trajanjem, ki se v resnici komaj ne prekrivata, po vizualnem
+// raztegu na minimalno višino vseeno pristala v isti stezi in se na zaslonu prekrila.
+function effectiveEndAt(startAt: string, endAt: string): string {
+  const minEnd = new Date(startAt).getTime() + MIN_DISPLAY_HOURS * 3_600_000;
+  return new Date(endAt).getTime() > minEnd ? endAt : new Date(minEnd).toISOString();
+}
+
+// Prekrivajoce se dogodke istega dne razporedi v "steze" (kot Outlook/Google Calendar dnevni
+// pogled), da se vizualno ne prekrivajo -- pohlepni algoritem: vsak dogodek gre v prvo prosto
+// stezo, katere zadnji dogodek se je ze koncal.
+function packGroupsForDay(dayGroups: PlanGroupItem[]): PositionedGroup[] {
+  const sorted = [...dayGroups].sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const laneEndTimes: string[] = [];
+  const placed: (PlanGroupItem & { lane: number; effEndAt: string })[] = [];
+
+  for (const g of sorted) {
+    const effEndAt = effectiveEndAt(g.startAt, g.endAt);
+    let laneIndex = laneEndTimes.findIndex((endAt) => endAt <= g.startAt);
+    if (laneIndex === -1) {
+      laneIndex = laneEndTimes.length;
+      laneEndTimes.push(effEndAt);
+    } else {
+      laneEndTimes[laneIndex] = effEndAt;
+    }
+    placed.push({ ...g, lane: laneIndex, effEndAt });
+  }
+
+  return placed.map((g) => {
+    const overlapping = placed.filter((other) => other.startAt < g.effEndAt && other.effEndAt > g.startAt);
+    const laneCount = Math.max(...overlapping.map((o) => o.lane + 1), g.lane + 1);
+    return { ...g, laneCount };
+  });
+}
+
+export function PlanCalendar({
+  weekStartIso,
+  clients,
+  vehiclePlates,
+  groups,
+  canManagePlan,
+}: {
+  weekStartIso: string;
+  clients: { id: string; name: string }[];
+  vehiclePlates: string[];
+  groups: PlanGroupItem[];
+  canManagePlan: boolean;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const weekStart = new Date(weekStartIso);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalKey, setModalKey] = useState(0);
+  const [modalStartDefault, setModalStartDefault] = useState("");
+  const [modalEndDateDefault, setModalEndDateDefault] = useState("");
+  const [modalLockDate, setModalLockDate] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [startAtIso, setStartAtIso] = useState("");
+  const [endAtIso, setEndAtIso] = useState("");
+  const [newGroupInstaller, setNewGroupInstaller] = useState("");
+  const [newGroupTasks, setNewGroupTasks] = useState<
+    { id: number; vehiclePlate: string; type: string; note: string }[]
+  >([]);
+  const nextTaskRowId = useRef(0);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [state, formAction, pending] = useActionState(createPlanGroup, undefined);
+  const [installerFilter, setInstallerFilter] = useState<"ALL" | "SIMON" | "VITO">("ALL");
+  const [calView, setCalView] = useState<"week" | "day">("week");
+  const [, startTransition] = useTransition();
+  // Ob povleku zapomni ID skupine, njeno trajanje (ohranjeno ob premiku) in navpični odmik med
+  // vrhom bloka in mestom, kjer ga je uporabnik prijel -- da ob spustu blok "ne skoči" tako, da bi
+  // se njegov vrh poravnal s kazalcem, temveč ostane pod kazalcem natanko tam, kjer je bil prijet.
+  const [draggingGroup, setDraggingGroup] = useState<{ id: string; grabOffsetY: number; durationMs: number } | null>(
+    null
+  );
+  // Ob raztegovanju roba zapomni ID skupine, kateri rob (top=začetek, bottom=konec) se vleče, dan
+  // stolpca (za pretvorbo Y-položaja v čas), vrh tega stolpca ob prijemu (zajet enkrat, da med
+  // vlečenjem ni treba znova brati DOM-a) ter živi predogled začetka/konca, ki se med vlečenjem
+  // sproti posodablja in šele ob spustu pošlje na strežnik.
+  const [resizingGroup, setResizingGroup] = useState<{
+    id: string;
+    dayIdx: number;
+    edge: "top" | "bottom";
+    columnTop: number;
+    startAt: Date;
+    endAt: Date;
+  } | null>(null);
+  const resizingGroupRef = useRef<typeof resizingGroup>(null);
+
+  // Privzeti pogled ob prvem nalaganju: na telefonu (ozek zaslon) dan, na računalniku teden. Enako
+  // kot ThemeToggle najprej izriše SSR-varno privzeto vrednost ("week"), nato jo v učinku (samo na
+  // odjemalcu, samo enkrat ob priklopu) po potrebi popravi -- brez tega bi se strežniško in
+  // odjemalsko izrisano stanje razlikovala. Ker učinek nima odvisnosti, se ne sproži znova ob vsaki
+  // naslednji navigaciji po tednih/dnevih, zato ročna izbira uporabnika kasneje ni prepisana.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      setCalView("day");
+    }
+  }, []);
+
+  // Dnevni pogled prikaže samo en dan -- izbrani dan je isti "teden" parameter, ki določa naloženi
+  // teden (poljuben dan znotraj njega, ne nujno ponedeljek; startOfWeek na strežniku ga že pravilno
+  // prevede v pravi teden), privzeto današnji, če parameter manjka. Steza/prekrivanje in
+  // klik-za-ustvarjanje ostaneta nespremenjena, saj vedno delata z resničnim indeksom dneva v
+  // `days`, ne z indeksom znotraj prikazanega podnabora.
+  const requestedDateStr = searchParams.get("teden");
+  const selectedDay = requestedDateStr && !Number.isNaN(new Date(requestedDateStr).getTime())
+    ? new Date(requestedDateStr)
+    : new Date();
+  const dayViewIndexRaw = days.findIndex((d) => localDateStr(d) === localDateStr(selectedDay));
+  const dayViewIndex = dayViewIndexRaw >= 0 ? dayViewIndexRaw : 0;
+  const visibleDayIndices = calView === "day" ? [dayViewIndex] : [0, 1, 2, 3, 4, 5, 6];
+  const gridColsClass =
+    calView === "day" ? "grid-cols-[67px_minmax(0,1fr)]" : "grid-cols-[67px_repeat(7,minmax(0,1fr))]";
+
+  // Nikoli zamrznjena kopija -- izbrana skupina se sveže poišče iz `groups` ob vsakem renderju, da
+  // odprt pojavni pano takoj odraža nov nalog po revalidatePath("/plan") (npr. po addPlannedTask).
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
+
+  const visibleGroups =
+    installerFilter === "ALL" ? groups : groups.filter((g) => g.expectedInstaller === installerFilter);
+
+  useEffect(() => {
+    if (state?.success) {
+      setModalOpen(false);
+      // Takoj odpri ravno ustvarjeno skupino, da je dodajanje nalogov mogoče brez dodatnega klika
+      // na koledarju.
+      if (state.groupId) setSelectedGroupId(state.groupId);
+    }
+  }, [state]);
+
+  function groupColor(clientId: string) {
+    return PALETTE[hashToIndex(clientId, PALETTE.length)];
+  }
+
+  // Simon in Vito imata vsak svojo stalno barvo (namesto barve glede na stranko), da ju je na
+  // koledarju mogoče takoj razločiti ne glede na to, za katero stranko delata -- temnejši odtenek
+  // pomeni, da so vsi nalogi v dogodku že opravljeni, svetlejši, da je vsaj eden še odprt (ali da
+  // dogodek še nima nalogov). Za ostale/nedoločene monterje ostane barva po stranki nespremenjena.
+  function installerBlockColor(installer: string | null, allDone: boolean): string | null {
+    // Namenoma izven zgornjega PALETTE polja (barve po stranki) -- sicer bi se lahko po naključju
+    // ujemala z barvo neke stranke pri drugem monterju in bi bila razločljivost spet izgubljena.
+    if (installer === "SIMON") return allDone ? "#075985" : "#0284c7";
+    if (installer === "VITO") return allDone ? "#5b21b6" : "#7c3aed";
+    return null;
+  }
+
+  // startDefault: "YYYY-MM-DDTHH:mm" v lokalnem času; endDateDefault: samo "YYYY-MM-DD" (isti dan
+  // kot začetek, brez ure -- trajanje uporabnik vedno vnese ročno). Oba prazna za ročni vnos (gumb
+  // "Nov dogodek"), sicer predizpolnjena iz kliknjenega kvadratka v koledarju. lockDate: true, ko je
+  // datum že določen s klikom na koledar -- takrat DateTimeInput ne dovoli spreminjanja datuma
+  // (samo ura), da klik znotraj časovnega izbirnika ne more po nesreči spremeniti dneva/meseca.
+  function openCreateModal(startDefault: string = "", endDateDefault: string = "", lockDate: boolean = false) {
+    setClientId("");
+    setModalStartDefault(startDefault);
+    setModalEndDateDefault(endDateDefault);
+    setModalLockDate(lockDate);
+    setStartAtIso(startDefault ? localDateTimeToIso(startDefault) : "");
+    setEndAtIso("");
+    setNewGroupInstaller("");
+    setNewGroupTasks([]);
+    setModalKey((k) => k + 1);
+    setModalOpen(true);
+  }
+
+  function addTaskRow() {
+    nextTaskRowId.current += 1;
+    setNewGroupTasks((prev) => [...prev, { id: nextTaskRowId.current, vehiclePlate: "", type: "", note: "" }]);
+  }
+
+  function updateTaskRow(id: number, patch: Partial<{ vehiclePlate: string; type: string; note: string }>) {
+    setNewGroupTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function removeTaskRow(id: number) {
+    setNewGroupTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  // offsetY je 0 na vrhu VIDNEGA okna (DAY_START_HOUR), ne na polnoči -- brez prištetega
+  // DAY_START_HOUR*60 bi npr. vrstica "14:00" napačno pomenila uro 08:00. Deljeno med klik-za-
+  // ustvarjanje in spust-za-premik, da oba na enak način (zaokroženo na 30 min, omejeno na vidno
+  // okno 6:00-17:30) pretvorita navpični položaj v uro/minuto.
+  function hourMinuteFromOffsetY(offsetY: number): { hour: number; minute: number } {
+    const maxMinutesFromStart = (DAY_END_HOUR - DAY_START_HOUR) * 60 - 30;
+    const minutesFromStart = Math.max(
+      0,
+      Math.min(maxMinutesFromStart, Math.round(((offsetY / PX_PER_HOUR) * 60) / 30) * 30)
+    );
+    const totalMinutes = DAY_START_HOUR * 60 + minutesFromStart;
+    return { hour: Math.floor(totalMinutes / 60), minute: totalMinutes % 60 };
+  }
+
+  function dateAtDayAndOffset(day: Date, offsetY: number): Date {
+    const { hour, minute } = hourMinuteFromOffsetY(offsetY);
+    const result = new Date(day);
+    result.setHours(hour, minute, 0, 0);
+    return result;
+  }
+
+  // Klik na prazen del dneva v koledarju -- izračuna uro/dan iz Y-položaja klika in odpre
+  // ustvarjalni obrazec z že izpolnjenim začetkom IN datumom konca (isti dan); ura konca ostane za
+  // ročni vnos, glej DateTimeInput. Datum (dan) je s tem že določen, zato lockDate.
+  function handleDayColumnClick(e: React.MouseEvent<HTMLDivElement>, dayIdx: number) {
+    if (!canManagePlan) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const start = dateAtDayAndOffset(days[dayIdx], e.clientY - rect.top);
+    const y = start.getFullYear();
+    const m = String(start.getMonth() + 1).padStart(2, "0");
+    const d = String(start.getDate()).padStart(2, "0");
+    const hh = String(start.getHours()).padStart(2, "0");
+    const mm = String(start.getMinutes()).padStart(2, "0");
+    openCreateModal(`${y}-${m}-${d}T${hh}:${mm}`, `${y}-${m}-${d}`, true);
+  }
+
+  function handleGroupDragStart(e: React.DragEvent<HTMLButtonElement>, g: PlanGroupItem) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDraggingGroup({
+      id: g.id,
+      grabOffsetY: e.clientY - rect.top,
+      durationMs: new Date(g.endAt).getTime() - new Date(g.startAt).getTime(),
+    });
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  // Dogodek spusti na nov dan/uro -- ohrani izvirno trajanje (samo premakne začetek in konec za
+  // enak zamik) in navpični odmik prijema, da blok pod kazalcem ostane tam, kjer je bil zgrabljen.
+  function handleDayColumnDrop(e: React.DragEvent<HTMLDivElement>, dayIdx: number) {
+    e.preventDefault();
+    if (!draggingGroup || !canManagePlan) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const newStart = dateAtDayAndOffset(days[dayIdx], e.clientY - rect.top - draggingGroup.grabOffsetY);
+    const newEnd = new Date(newStart.getTime() + draggingGroup.durationMs);
+    const groupId = draggingGroup.id;
+    setDraggingGroup(null);
+    startTransition(async () => {
+      const result = await movePlanGroup(groupId, newStart.toISOString(), newEnd.toISOString());
+      if (result?.error) window.alert(result.error);
+    });
+  }
+
+  // Prime za VLEČENJE ROBA (raztezanje/krčenje) -- ločeno od handleGroupDragStart (premik celega
+  // dogodka), zato ne uporablja HTML5 drag-and-drop (ki ne ponuja gladkega sprotnega predogleda),
+  // temveč navadne miškine dogodke na oknu. draggable={false} na ročici (glej JSX spodaj) prepreči,
+  // da bi ista poteza po nesreči sprožila tudi premik celega bloka.
+  function handleResizeMouseDown(
+    e: React.MouseEvent<HTMLDivElement>,
+    g: PlanGroupItem,
+    dayIdx: number,
+    edge: "top" | "bottom"
+  ) {
+    if (!canManagePlan) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const columnEl = (e.currentTarget as HTMLElement).closest("[data-daycolumn]") as HTMLElement | null;
+    const next = {
+      id: g.id,
+      dayIdx,
+      edge,
+      columnTop: columnEl?.getBoundingClientRect().top ?? 0,
+      startAt: new Date(g.startAt),
+      endAt: new Date(g.endAt),
+    };
+    resizingGroupRef.current = next;
+    setResizingGroup(next);
+  }
+
+  // Med vlečenjem roba posluša miškino gibanje/spust na celem oknu (ne le nad kvadratkom), ker
+  // kazalec med hitrim vlečenjem zlahka zaide izven prvotnega elementa. Najmanjše trajanje 30 min
+  // prepreči, da bi vlečeni rob "prehitel" nasprotnega in obrnil vrstni red začetka/konca.
+  useEffect(() => {
+    if (!resizingGroup) return;
+
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    function handleMouseMove(e: MouseEvent) {
+      setResizingGroup((prev) => {
+        if (!prev) return prev;
+        const dragged = dateAtDayAndOffset(days[prev.dayIdx], e.clientY - prev.columnTop);
+        let next;
+        if (prev.edge === "top") {
+          const maxStart = new Date(prev.endAt.getTime() - 30 * 60 * 1000);
+          next = { ...prev, startAt: dragged.getTime() > maxStart.getTime() ? maxStart : dragged };
+        } else {
+          const minEnd = new Date(prev.startAt.getTime() + 30 * 60 * 1000);
+          next = { ...prev, endAt: dragged.getTime() < minEnd.getTime() ? minEnd : dragged };
+        }
+        // Zabeleži v ref (ne le v stanje) -- handleMouseUp spodaj bere iz refa, ne iz stanja, ker
+        // React v razvojnem načinu (StrictMode) funkcije za posodobitev stanja pokliče dvakrat; če bi
+        // sranski učinek (movePlanGroup) živel znotraj take funkcije, bi se dvakrat sprožil tudi on.
+        resizingGroupRef.current = next;
+        return next;
+      });
+    }
+
+    function handleMouseUp() {
+      const current = resizingGroupRef.current;
+      if (current) {
+        // Brskalnik takoj po spustu miške na elementu pod kazalcem sproži še 'click' -- ne glede na
+        // to, ali pristane na ročici, na bloku ali (če je uporabnik komaj zgrešil tanko ročico) na
+        // praznem delu koledarja. Ta enkratni prestreznik v CAPTURE fazi na oknu ga ustavi, še preden
+        // doseže katerikoli onClick, ne glede na natančen cilj -- brez tega bi po vsakem raztezanju/
+        // krčenju po nesreči odprlo pojavno okno dogodka ali celo ustvarjalni obrazec.
+        const suppressNextClick = (e: MouseEvent) => {
+          e.stopPropagation();
+        };
+        window.addEventListener("click", suppressNextClick, { capture: true, once: true });
+        window.setTimeout(() => window.removeEventListener("click", suppressNextClick, { capture: true }), 300);
+
+        const { id, startAt, endAt } = current;
+        startTransition(async () => {
+          const result = await movePlanGroup(id, startAt.toISOString(), endAt.toISOString());
+          if (result?.error) window.alert(result.error);
+        });
+      }
+      resizingGroupRef.current = null;
+      setResizingGroup(null);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizingGroup?.id]);
+
+  function goToWeek(offsetDays: number) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + offsetDays);
+    const params = new URLSearchParams(window.location.search);
+    params.set("teden", localDateStr(d));
+    router.push(`/plan?${params.toString()}`);
+  }
+
+  function goToday() {
+    const params = new URLSearchParams(window.location.search);
+    params.delete("teden");
+    router.push(`/plan?${params.toString()}`);
+  }
+
+  // Premik za en dan (dnevni pogled) -- za razliko od goToWeek cilj ni nujno ponedeljek; strežniška
+  // startOfWeek() ga vseeno pravilno prevede v teden, ki ta dan vsebuje, zato tedenski podatki ostanejo
+  // pravilni tudi ob prehodu čez mejo tedna.
+  function goToDay(offsetDays: number) {
+    const d = new Date(selectedDay);
+    d.setDate(d.getDate() + offsetDays);
+    const params = new URLSearchParams(window.location.search);
+    params.set("teden", localDateStr(d));
+    router.push(`/plan?${params.toString()}`);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => (calView === "day" ? goToDay(-1) : goToWeek(-7))}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            {calView === "day" ? "‹ Prejšnji dan" : "‹ Prejšnji teden"}
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Danes
+          </button>
+          <button
+            type="button"
+            onClick={() => (calView === "day" ? goToDay(1) : goToWeek(7))}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            {calView === "day" ? "Naslednji dan ›" : "Naslednji teden ›"}
+          </button>
+          <span className="ml-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+            {calView === "day"
+              ? days[dayViewIndex].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })
+              : (
+                <>
+                  {days[0].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit" })} –{" "}
+                  {days[6].toLocaleDateString("sl-SI", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                </>
+              )}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { key: "ALL", label: "Skupaj" },
+            { key: "SIMON", label: "Simon" },
+            { key: "VITO", label: "Vito" },
+          ] as const).map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setInstallerFilter(f.key)}
+              className={
+                installerFilter === f.key
+                  ? "rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+                  : "rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+          {canManagePlan && (
+            <button
+              type="button"
+              onClick={() => openCreateModal()}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              Nov dogodek
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+        <div className={`grid ${gridColsClass} border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800`}>
+          <button
+            type="button"
+            onClick={() => setCalView((v) => (v === "week" ? "day" : "week"))}
+            className="text-xs font-medium text-blue-600 hover:bg-gray-100 dark:text-blue-400 dark:hover:bg-gray-700"
+          >
+            {calView === "week" ? "Dan" : "Teden"}
+          </button>
+          {visibleDayIndices.map((i) => (
+            <div
+              key={i}
+              className="border-l border-gray-200 px-2 py-2 text-center text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300"
+            >
+              {DAY_LABELS[i]}{" "}
+              <span className="text-gray-400 dark:text-gray-500">{days[i].getDate()}.{days[i].getMonth() + 1}.</span>
+            </div>
+          ))}
+        </div>
+        <div className={`relative grid ${gridColsClass}`} style={{ height: HOURS.length * PX_PER_HOUR }}>
+          <div className="relative">
+            {HOURS.map((h) => (
+              <div
+                key={h}
+                className="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500"
+                style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
+              >
+                {String(h).padStart(2, "0")}:00
+              </div>
+            ))}
+          </div>
+          {visibleDayIndices.map((dayIdx) => {
+            const day = days[dayIdx];
+            // Dnevno članstvo šteje cel dan (0h-24h), da nalog izven prikazanega okna (6h-18h) ne
+            // izgine iz koledarja -- samo vizualno se obreže na rob vidnega okna spodaj.
+            const dayStart = new Date(day);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            const dayGroups = visibleGroups.filter(
+              (g) => new Date(g.startAt) < dayEnd && new Date(g.endAt) > dayStart
+            );
+            const positioned = packGroupsForDay(dayGroups);
+            const visibleStart = new Date(day);
+            visibleStart.setHours(DAY_START_HOUR, 0, 0, 0);
+            const visibleEnd = new Date(day);
+            visibleEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+            return (
+              <div
+                key={dayIdx}
+                data-daycolumn
+                onClick={(e) => handleDayColumnClick(e, dayIdx)}
+                onDragOver={(e) => {
+                  if (draggingGroup) e.preventDefault();
+                }}
+                onDrop={(e) => handleDayColumnDrop(e, dayIdx)}
+                className={`relative border-l border-gray-100 dark:border-gray-800 ${canManagePlan ? "cursor-pointer" : ""}`}
+              >
+                {HOURS.map((h) => (
+                  <div
+                    key={h}
+                    className="absolute left-0 right-0 border-t border-gray-100 dark:border-gray-800"
+                    style={{ top: (h - DAY_START_HOUR) * PX_PER_HOUR }}
+                  />
+                ))}
+                {positioned.map((g) => {
+                  // Med raztezanjem roba se položaj/višina računata iz živega predogleda
+                  // (resizingGroup), ne iz shranjenih g.startAt/g.endAt, da se blok na zaslonu
+                  // spreminja sproti, še preden je premik potrjen na strežniku.
+                  const isResizing = resizingGroup?.id === g.id;
+                  const liveStartMs = isResizing ? resizingGroup.startAt.getTime() : new Date(g.startAt).getTime();
+                  const liveEndMs = isResizing ? resizingGroup.endAt.getTime() : new Date(g.endAt).getTime();
+                  const clampedStart = Math.max(liveStartMs, visibleStart.getTime());
+                  const clampedEnd = Math.min(liveEndMs, visibleEnd.getTime());
+                  const topHours = (clampedStart - visibleStart.getTime()) / 3_600_000;
+                  const durationHours = Math.max((clampedEnd - clampedStart) / 3_600_000, MIN_DISPLAY_HOURS);
+                  const widthPct = 100 / g.laneCount;
+                  const doneCount = g.tasks.filter((t) => t.workOrderId).length;
+                  const allDone = g.tasks.length > 0 && doneCount === g.tasks.length;
+                  const donePct = g.tasks.length > 0 ? (doneCount / g.tasks.length) * 100 : 0;
+                  const installerText = g.expectedInstaller
+                    ? g.expectedInstaller === "OSTALO"
+                      ? g.expectedInstallerOtherText || "Ostalo"
+                      : installerLabel(g.expectedInstaller)
+                    : null;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      draggable={canManagePlan}
+                      onDragStart={(e) => handleGroupDragStart(e, g)}
+                      onDragEnd={() => setDraggingGroup(null)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedGroupId(g.id);
+                      }}
+                      className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm ${
+                        canManagePlan ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${draggingGroup?.id === g.id ? "opacity-40" : ""}`}
+                      style={{
+                        top: topHours * PX_PER_HOUR,
+                        height: durationHours * PX_PER_HOUR - 2,
+                        left: `${g.lane * widthPct}%`,
+                        width: `calc(${widthPct}% - 2px)`,
+                        backgroundColor: installerBlockColor(g.expectedInstaller, allDone) ?? groupColor(g.clientId),
+                      }}
+                      title={g.clientName}
+                    >
+                      {/* Zeleni trak na dnu bloka nazorno pokaže delež opravljenih nalogov -- brez
+                          njih ga ni, pri delnem napredku je širok toliko odstotkov, pri vseh
+                          opravljenih pa čez celo širino. */}
+                      <div
+                        className="absolute bottom-0 left-0 h-[6px] bg-green-500 pointer-events-none"
+                        style={{ width: `${donePct}%` }}
+                      />
+                      <div className="break-words font-semibold">{g.clientName}</div>
+                      {installerText && (
+                        <div className="break-words">
+                          {installerText}
+                          {g.tasks.length > 0 ? ` · ${doneCount}/${g.tasks.length}` : ""}
+                        </div>
+                      )}
+                      {!installerText && g.tasks.length > 0 && (
+                        <div className="break-words">{doneCount}/{g.tasks.length}</div>
+                      )}
+                      {g.contact && <div className="break-words">Kontakt: {g.contact}</div>}
+                      {g.tasks.length > 0 ? (
+                        g.tasks.map((t) => (
+                          <div key={t.id}>
+                            <div className="break-words">
+                              {t.type ? `${taskTypeLabel(t.type)} ` : ""}
+                              {t.vehiclePlate}
+                            </div>
+                            {t.note && <div className="break-words">{t.note}</div>}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="break-words">brez nalogov</div>
+                      )}
+                      {canManagePlan && (
+                        <>
+                          {/* Ročici na zgornjem/spodnjem robu za raztezanje/krčenje dogodka --
+                              draggable={false} prepreči, da bi vlečenje ročice po nesreči sprožilo
+                              premik celega bloka (ta je draggable prek starševskega gumba). */}
+                          <div
+                            className="absolute inset-x-0 top-0 h-[6px] cursor-ns-resize"
+                            draggable={false}
+                            onMouseDown={(e) => handleResizeMouseDown(e, g, dayIdx, "top")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div
+                            className="absolute inset-x-0 bottom-0 h-[6px] cursor-ns-resize"
+                            draggable={false}
+                            onMouseDown={(e) => handleResizeMouseDown(e, g, dayIdx, "bottom")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedGroup && (
+        <GroupPopup
+          key={selectedGroup.id}
+          group={selectedGroup}
+          clients={clients}
+          vehiclePlates={vehiclePlates}
+          canManagePlan={canManagePlan}
+          onClose={() => setSelectedGroupId(null)}
+        />
+      )}
+
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-black/30"
+          onClick={() => setModalOpen(false)}
+        >
+          <form
+            action={formAction}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-md border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          >
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Nov dogodek</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Stranka</label>
+              <ClientCombobox clients={clients} value={clientId} onChange={setClientId} required />
+              <input type="hidden" name="clientId" value={clientId} />
+            </div>
+            <input type="hidden" name="startAt" value={startAtIso} />
+            <input type="hidden" name="endAt" value={endAtIso} />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Od
+                <DateTimeInput
+                  key={`start-${modalKey}`}
+                  withTime
+                  required
+                  lockDate={modalLockDate}
+                  defaultValue={modalStartDefault}
+                  onValueChange={(v) => setStartAtIso(localDateTimeToIso(v))}
+                />
+              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Do (neobvezno, privzeto +1h)
+                <DateTimeInput
+                  key={`end-${modalKey}`}
+                  withTime
+                  lockDate={modalLockDate}
+                  defaultValue={modalEndDateDefault}
+                  onValueChange={(v) => setEndAtIso(localDateTimeToIso(v))}
+                />
+              </label>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Opomba (neobvezno)
+              <textarea name="note" rows={2} className={fieldClass()} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Kontakt (neobvezno)
+              <input name="contact" type="text" className={fieldClass()} />
+            </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Monter (neobvezno, velja za cel dogodek)
+              </label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select
+                  name="expectedInstaller"
+                  value={newGroupInstaller}
+                  onChange={(e) => setNewGroupInstaller(e.target.value)}
+                  className={`${fieldClass()} mt-0 w-auto`}
+                >
+                  <option value="">— ni določen —</option>
+                  {INSTALLERS.map((name) => (
+                    <option key={name} value={name}>
+                      {installerLabel(name)}
+                    </option>
+                  ))}
+                </select>
+                {newGroupInstaller === "OSTALO" && (
+                  <input
+                    name="expectedInstallerOtherText"
+                    placeholder="Ime monterja"
+                    className={`${fieldClass()} mt-0 flex-1`}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nalogi (neobvezno)</span>
+                <button
+                  type="button"
+                  onClick={addTaskRow}
+                  className="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 dark:border-gray-600 dark:text-gray-300"
+                >
+                  + Dodaj nalog
+                </button>
+              </div>
+              {newGroupTasks.map((row) => (
+                <div key={row.id} className="flex items-start gap-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                  <div className="flex-1 space-y-2">
+                    <PlateCombobox
+                      plates={vehiclePlates}
+                      value={row.vehiclePlate}
+                      onChange={(v) => updateTaskRow(row.id, { vehiclePlate: v })}
+                      className={fieldClass()}
+                    />
+                    <select
+                      value={row.type}
+                      onChange={(e) => updateTaskRow(row.id, { type: e.target.value })}
+                      className={`${fieldClass()} mt-0`}
+                    >
+                      <option value="">— tip naloga (neobvezno) —</option>
+                      {TASK_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Opomba (neobvezno)"
+                      value={row.note}
+                      onChange={(e) => updateTaskRow(row.id, { note: e.target.value })}
+                      className={`${fieldClass()} mt-0`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeTaskRow(row.id)}
+                    className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 dark:border-red-800 dark:text-red-400"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <input
+                type="hidden"
+                name="tasks"
+                value={JSON.stringify(
+                  newGroupTasks
+                    .filter((t) => t.vehiclePlate.trim())
+                    .map((t) => ({ vehiclePlate: t.vehiclePlate, type: t.type, note: t.note }))
+                )}
+              />
+            </div>
+            {state?.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300"
+              >
+                Prekliči
+              </button>
+              <button
+                type="submit"
+                disabled={pending || !startAtIso}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {pending ? "Shranjujem …" : "Ustvari"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,53 @@
+What actually needs to move
+Code: from GitHub (git@github.com:farjlcn1/teren.git or wherever it ends up)
+Secrets (gitignored, not in the repo): .env (just POSTGRES_PASSWORD) and .env.production (SESSION_SECRET, UPLOADS_DIR, SMTP_HOST/PORT/USER/PASSWORD/FROM, NEXT_PUBLIC_APP_URL)
+Database: the postgres_data Docker volume (all clients, users, work orders)
+Uploaded files: /home/matija/teren-data/uploads (photos, signatures), bind-mounted into the container
+A dependency you might miss: SMTP currently goes through host.docker.internal → this laptop's own local Postfix relay. The new machine won't have that unless you set it up too.
+Public exposure: the app only binds to 127.0.0.1:3000 — it's never directly reachable, it relies entirely on the Cloudflare Tunnel.
+Decisions to make before starting
+Migrate existing data, or start fresh? (I'll assume migrate, since you said "stop running it here and start it there")
+New domain — is it on Cloudflare already, or a different registrar/DNS provider?
+Mail: replicate the Postfix relay on the new machine, or point SMTP_HOST at something else reachable from there?
+Phase 1 — On this machine: package up the data
+docker compose --project-directory /home/matija/farjolcn/teren exec -T postgres pg_dump -U teren teren > teren-db.sql
+tar czf teren-uploads.tar.gz -C /home/matija/teren-data uploads
+cp /home/matija/farjolcn/teren/.env /home/matija/farjolcn/teren/.env.production teren-env-backup/
+
+Move teren-db.sql, teren-uploads.tar.gz, and the two env files to the new machine (scp/USB — treat the env files as secrets, not something to paste into chat).
+
+Phase 2 — New machine: prerequisites
+sudo apt update && sudo apt install -y docker.io docker-compose-plugin git
+
+(needs an interactive terminal for sudo — run it yourself)
+
+Phase 3 — Clone and restore
+git clone git@github.com:farjlcn1/teren.git
+cp .env .env.production teren/
+mkdir -p ~/teren-data/uploads && tar xzf teren-uploads.tar.gz -C ~/teren-data
+Phase 4 — Update docker-compose.yml for this machine's paths
+
+Change the uploads bind mount if the path differs from /home/matija/teren-data/uploads (e.g. different username). Everything else in docker-compose.yml is portable as-is.
+
+Phase 5 — Update .env.production for the new domain
+NEXT_PUBLIC_APP_URL="https://your-new-domain.com"
+
+And either point SMTP_HOST at a relay reachable from the new machine, or set up Postfix there too.
+
+Phase 6 — Bring up empty containers, then restore the DB
+docker compose up -d postgres
+cat teren-db.sql | docker compose exec -T postgres psql -U teren -d teren
+docker compose up -d --build app
+
+The entrypoint runs prisma migrate deploy automatically on start, so schema stays in sync.
+
+Phase 7 — Cloudflare Tunnel for the new domain
+cloudflared tunnel login
+cloudflared tunnel create teren-new
+cloudflared tunnel route dns teren-new your-new-domain.com
+
+Then a config.yml mapping that hostname → http://localhost:3000, and a systemd unit to run it persistently (same pattern as this machine's farjolcn-laptop tunnel).
+
+Phase 8 — Verify before cutting over
+
+Load https://your-new-domain.com directly, log in, confirm data/photos are there, send a test action that triggers email, before touching anything on this machine.

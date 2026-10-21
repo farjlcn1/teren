@@ -1,0 +1,116 @@
+# Testno okolje Teren: aplikacija (Next.js) + API (Spring Boot) + lokalna testna baza.
+#
+#   docker compose up -d --build                       # zagon (db, teren, api)
+#   docker compose --profile seed run --rm teren-seed  # prvi admin uporabnik
+#   docker compose --profile tunnel up -d              # + Cloudflare tunel za teren.farjolcn.com
+#
+# Ob selitvi na drug strežnik s pravo bazo se servis "db" odstrani,
+# DATABASE_URL in DB_* pa nastavita na pravo bazo (glej README.md).
+name: teren
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: teren
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?manjka POSTGRES_PASSWORD v .env}
+      POSTGRES_DB: teren
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      # Samo za pregled baze z orodji na tem računalniku (npr. DBeaver), od zunaj ni dosegljiva.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teren -d teren"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  teren:
+    build: ./teren
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://teren:${POSTGRES_PASSWORD}@db:5432/teren
+      SESSION_SECRET: ${SESSION_SECRET:?manjka SESSION_SECRET v .env}
+      UPLOADS_DIR: /app/uploads
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-https://teren.farjolcn.com}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Za prehod na API: teren ga bo klical po internem Docker omrežju.
+      API_URL: http://api:8080
+      # Brez tega vsebnik teče v UTC, koledar v /plan pa bi pri SSR računal napačne ure.
+      TZ: Europe/Ljubljana
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build: ./teren-api
+    restart: unless-stopped
+    depends_on:
+      # Shemo zaenkrat ustvari teren (prisma migrate deploy ob zagonu); API jo nato samo preveri.
+      teren:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: teren
+      DB_USERNAME: teren
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      API_PUBLIC_URL: http://localhost:8080
+      APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
+      TZ: Europe/Ljubljana
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    mem_limit: 768m
+    ports:
+      # Za Swagger med testiranjem (http://localhost:8080/swagger-ui.html). V produkciji se izpusti.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - api_logs:/app/logs
+
+  # Enkraten zagon: ustvari prvega admin uporabnika in izpiše njegovo geslo.
+  teren-seed:
+    profiles: ["seed"]
+    build:
+      context: ./teren
+      target: builder
+    depends_on:
+      teren:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://teren:${POSTGRES_PASSWORD}@db:5432/teren
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+    # Prazen SEED_ADMIN_EMAIL bi ustvaril uporabnika brez e-pošte, zato ga preverimo pred zagonom.
+    command: ["sh", "-c", "test -n \"$$SEED_ADMIN_EMAIL\" || { echo 'Nastavi SEED_ADMIN_EMAIL v .env'; exit 1; }; npx tsx prisma/seed.ts"]
+
+  # Javni dostop prek Cloudflare tunela (teren.farjolcn.com -> http://teren:3000).
+  tunnel:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2026.10.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # Neobvezen, da manjkajoč žeton ne blokira zagona ostalih servisov (brez --profile tunnel).
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      teren:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  uploads:
+  api_logs:
