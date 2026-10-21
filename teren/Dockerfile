@@ -1,5 +1,4 @@
 FROM node:24-slim AS base
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
 WORKDIR /app
@@ -10,9 +9,6 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Samo za "prisma generate" med gradnjo — dejanski DATABASE_URL se poda ob zagonu vsebnika.
-ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
-RUN npx prisma generate
 RUN npm run build
 
 FROM base AS runner
@@ -23,20 +19,15 @@ RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nod
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Next.js v standalone ne prenese nativne knjižnice libvips za sharp (obdelava fotografij), zato celoten @img.
+COPY --from=builder /app/node_modules/@img ./node_modules/@img
 
-# Poln node_modules (ne samo standalone-pruned) + prisma shema, ker `prisma migrate deploy`
-# ob zagonu potrebuje celoten Prisma CLI z vsemi njegovimi tranzitivnimi odvisnostmi.
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/src/generated ./src/generated
-
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh && mkdir -p uploads && chown -R nextjs:nodejs uploads
+# Do baze aplikacija ne dostopa (vse gre prek teren-api), zato ob zagonu ni migracij.
+RUN mkdir -p uploads && chown -R nextjs:nodejs uploads
 
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "server.js"]

@@ -1,21 +1,44 @@
 # Teren na strežniku: aplikacija (Next.js) + API (Spring Boot), baza na 192.168.0.30:5433.
 #
-#   docker compose up -d --build                       # zagon (teren, api)
-#   docker compose --profile seed run --rm teren-seed  # prvi admin uporabnik (samo v prazni bazi)
-#   docker compose --profile tunnel up -d              # + Cloudflare tunel za teren.farjolcn.com
+#   docker compose up -d --build              # zagon (api → teren)
+#   docker compose logs api | grep "prvi admin"  # geslo prvega admina (samo ob prvem zagonu na prazni bazi)
+#   docker compose --profile tunnel up -d     # + Cloudflare tunel za teren.farjolcn.com
 #
-# Povezava na bazo je v .env (DB_*). Teren ob vsakem zagonu požene `prisma migrate deploy`,
-# zato mora biti baza prazna ali že teren baza (s tabelo _prisma_migrations).
+# Do baze dostopa samo API (DB_* v .env). Ob zagonu Flyway ustvari shemo v prazni bazi, bazo iz Prisme
+# (stara aplikacija teren) pa brez sprememb označi kot izhodišče; neznane neprazne baze ne spreminja.
 name: teren
 
-x-database-url: &database-url postgresql://${DB_USER:?manjka DB_USER v .env}:${DB_PASSWORD:?manjka DB_PASSWORD v .env}@${DB_HOST:?manjka DB_HOST v .env}:${DB_PORT:-5432}/${DB_NAME:?manjka DB_NAME v .env}
-
 services:
+  api:
+    build: ./teren-api
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:?manjka DB_HOST v .env}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:?manjka DB_NAME v .env}
+      DB_USERNAME: ${DB_USER:?manjka DB_USER v .env}
+      DB_PASSWORD: ${DB_PASSWORD:?manjka DB_PASSWORD v .env}
+      API_PUBLIC_URL: http://localhost:8080
+      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
+      # Na prazni bazi API ob zagonu ustvari admina s tem emailom in geslo izpiše v log.
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
+      TZ: Europe/Ljubljana
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    mem_limit: 768m
+    # Brez ports: API je dosegljiv samo aplikaciji teren po Docker omrežju.
+    # Za Swagger s strežnika začasno dodaj: ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - api_logs:/app/logs
+
   teren:
     build: ./teren
     restart: unless-stopped
+    depends_on:
+      # Aplikacija vse podatke bere in piše prek API-ja.
+      api:
+        condition: service_healthy
     environment:
-      DATABASE_URL: *database-url
       SESSION_SECRET: ${SESSION_SECRET:?manjka SESSION_SECRET v .env}
       UPLOADS_DIR: /app/uploads
       NEXT_PUBLIC_APP_URL: ${APP_URL:-https://teren.farjolcn.com}
@@ -40,45 +63,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-
-  api:
-    build: ./teren-api
-    restart: unless-stopped
-    depends_on:
-      # Shemo zaenkrat ustvari teren (prisma migrate deploy ob zagonu); API jo nato samo preveri.
-      teren:
-        condition: service_healthy
-    environment:
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME}
-      DB_USERNAME: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      API_PUBLIC_URL: http://localhost:8080
-      API_TOKEN: ${API_TOKEN:?manjka API_TOKEN v .env}
-      APP_LOG_LEVEL: ${API_LOG_LEVEL:-DEBUG}
-      TZ: Europe/Ljubljana
-      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
-    mem_limit: 768m
-    # Brez ports: API je dosegljiv samo aplikaciji teren po Docker omrežju.
-    # Za Swagger s strežnika začasno dodaj: ports: ["127.0.0.1:8080:8080"]
-    volumes:
-      - api_logs:/app/logs
-
-  # Enkraten zagon: ustvari prvega admin uporabnika in izpiše njegovo geslo.
-  teren-seed:
-    profiles: ["seed"]
-    build:
-      context: ./teren
-      target: builder
-    depends_on:
-      teren:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: *database-url
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
-    # Prazen SEED_ADMIN_EMAIL bi ustvaril uporabnika brez e-pošte, zato ga preverimo pred zagonom.
-    command: ["sh", "-c", "test -n \"$$SEED_ADMIN_EMAIL\" || { echo 'Nastavi SEED_ADMIN_EMAIL v .env'; exit 1; }; npx tsx prisma/seed.ts"]
 
   # Javni dostop prek Cloudflare tunela (teren.farjolcn.com -> http://teren:3000).
   tunnel:

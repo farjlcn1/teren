@@ -1,21 +1,22 @@
 # Teren – testno okolje (aplikacija + API)
 
 Dva Docker kontejnerja, aplikacija **teren** (Next.js) in **teren-api** (Spring Boot), ter lokalna testna baza.
+Do baze dostopa samo API; aplikacija vse podatke bere in piše prek njega.
 Kasneje se okolje preseli na drug strežnik s pravo bazo (glej [Selitev](#selitev-na-drug-strežnik-s-pravo-bazo)).
 
 ```
                     teren.farjolcn.com (Cloudflare tunel)
                                   │
 ┌─────────────────────────────────▼──────────────── Docker (omrežje "teren") ──┐
-│  teren   Next.js :3000  ──── API_URL=http://api:8080 ────►  api  Spring Boot :8080
-│     │  (Prisma, prehodno)                                         │ (JPA)
-│     └──────────────────────────►  db  Postgres 17 :5432  ◄────────┘
+│  teren   Next.js :3000  ── API_URL=http://api:8080, API_TOKEN ──►  api  Spring Boot :8080
+│  (fotografije, podpisi: volumen uploads)                            │ JPA, Flyway
+│                                                  db  Postgres 17 :5432  ◄┘
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Mapa / datoteka | Vsebina |
 |---|---|
-| `docker-compose.yml` | servisi `db`, `teren`, `api` + `teren-seed` in `tunnel` (profila) |
+| `docker-compose.yml` | servisi `db`, `api`, `teren` + `tunnel` (profil) |
 | `teren/` | aplikacija teren (Next.js) |
 | `teren-api/` | Spring Boot API po internih smernicah kodiranja |
 | `teren-server/` | compose za strežnik z zunanjo bazo (glej [Selitev](#selitev-na-drug-strežnik-s-pravo-bazo)) |
@@ -28,15 +29,14 @@ Kasneje se okolje preseli na drug strežnik s pravo bazo (glej [Selitev](#selite
 docker compose up -d --build
 ```
 
-Vrstni red zagona določa compose: `db` → `teren` (požene Prisma migracije) → `api` (preveri shemo).
+Vrstni red zagona določa compose: `db` → `api` (Flyway ustvari ali posodobi shemo) → `teren`.
 
-Prvi admin uporabnik (izpiše geslo, shrani si ga):
+Prvi admin: če je v `.env` nastavljen `SEED_ADMIN_EMAIL` in v bazi še ni nobenega uporabnika, ga API ob zagonu
+ustvari z vsemi pravicami in naključnim geslom, ki ga izpiše v log (shrani si ga in ga po prijavi zamenjaj):
 
 ```bash
-docker compose --profile seed run --rm teren-seed
+docker compose logs api | grep "prvi admin"
 ```
-
-> Seed admina ne nastavi pravice `canManagePlan`. Po prijavi jo dodaš v *Admin → Uporabniki*.
 
 | Naslov | Kaj |
 |---|---|
@@ -66,8 +66,7 @@ API prek tunela **ni** izpostavljen. Dosegljiv je samo aplikaciji teren in lokal
 
 ## Testi API-ja
 
-Testi tečejo na lastni začasni bazi v Dockerju (Testcontainers) s shemo iz
-`teren-api/src/test/resources/db/teren-schema.sql`.
+Testi tečejo na lastni začasni bazi v Dockerju (Testcontainers); shemo ustvari Flyway, tako kot v pravi bazi.
 
 Na tem računalniku je nameščena samo Java JRE (brez prevajalnika), zato je za razvoj priporočljiv JDK:
 
@@ -82,7 +81,7 @@ cd teren-api && ./mvnw test
 Brez nameščenega JDK lahko teste poženeš v Dockerju:
 
 ```bash
-cd teren-api && docker run --rm --network host --user "$(id -u):$(id -g)" --group-add "$(getent group docker | cut -d: -f3)" -e HOME=/tmp/home -v "$HOME/.m2":/tmp/home/.m2 -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":/workspace -w /workspace eclipse-temurin:25-jdk ./mvnw -B test
+cd teren-api && docker run --rm --network host --user "$(id -u):$(id -g)" --group-add "$(getent group docker | cut -d: -f3)" -e HOME=/tmp/home -v "$HOME/.m2":/tmp/home/.m2 -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":/workspace -w /workspace eclipse-temurin:25-jdk ./mvnw -B -Dmaven.repo.local=/tmp/home/.m2/repository test
 ```
 
 ## Logi
@@ -102,8 +101,8 @@ lahko zamenjaš z zunanjo datoteko prek `LOGGING_CONFIG=/pot/do/logback.xml`.
 
 ## Struktura API-ja
 
-Po smernicah: `com.sledenje.teren.<kontekst>.<nivo>.<komponenta>`. Trenutno je narejen kontekst
-**client** (stranke) kot vzorec za ostale (`vehicle`, `user`, `workorder`, `plan`):
+Po smernicah: `com.sledenje.teren.<kontekst>.<nivo>.<komponenta>`. Konteksti so `client`, `vehicle`, `user`,
+`workorder` in `plan`; spodaj je kot vzorec **client** (stranke):
 
 ```
 com/sledenje/teren/
@@ -112,7 +111,9 @@ com/sledenje/teren/
 │   │                                ResourceConflictException (409), ExternalServiceException (502)
 │   ├── infrastructure/config/       OpenApiConfig, TerenApiProperties
 │   ├── infrastructure/external/     ExternalListFetcher (GET JSON seznama za sinhronizacije)
-│   ├── infrastructure/persistence/  TimestampedJpaEntity (createdAt/updatedAt kot Prisma)
+│   ├── domain/model/                InstallerName, WorkOrderType (skupna nalogom in planu)
+│   ├── infrastructure/persistence/  TimestampedJpaEntity (createdAt/updatedAt kot Prisma),
+│   │                                PrismaBaselineMigrationStrategy (prehod sheme s Prisme na Flyway)
 │   ├── infrastructure/security/     ApiTokenFilter (/api/** zahteva Authorization: Bearer API_TOKEN)
 │   └── presentation/controller/     GlobalExceptionHandler (napake → ProblemDetail, brez stacktrace)
 └── client/
@@ -156,21 +157,21 @@ Kontekst **plan** (`/api/v1/plan-groups`, `/api/v1/planned-tasks`): dogodki v ob
 brisanje in planirani nalogi. Isti monter (pri »Ostalo« po imenu) nima prekrivajočih se dogodkov: ob vnosu,
 urejanju ali premiku API prekrivajoče dogodke verižno zamakne za konec novega okna.
 
-Po 5. koraku aplikacija baze ne uporablja več; Prisma ostane samo za migracije ob zagonu (`prisma migrate deploy`)
-in za `teren-seed`, dokler shema ne preide v API (6. korak).
+Prvega admina na prazni bazi ustvari `FirstAdminInitializer` (kontekst user) iz `SEED_ADMIN_EMAIL`.
 
 Controller injektira samo `ClientService` (interface iz domain nivoja). Pretvorniki so statični, zato se ne injektirajo.
 
 ## Baza in shema – pomembno
 
-- **Shemo trenutno upravlja Prisma** (teren ob vsakem zagonu požene `prisma migrate deploy`).
-  API ima `ddl-auto: validate`: ob zagonu preveri, da se entitete ujemajo s tabelami, in se ne zažene, če se ne.
-- **Ob novi Prisma migraciji** v `teren` posodobi testno shemo API-ja:
-
-  ```bash
-  { echo "-- Shema baze Teren za teste API-ja (iz teren/prisma/migrations)."; for d in teren/prisma/migrations/*/; do echo "-- ==== $(basename "$d")"; cat "$d/migration.sql"; done; } > teren-api/src/test/resources/db/teren-schema.sql
-  ```
-
+- **Shemo upravlja Flyway v teren-api** (`teren-api/src/main/resources/db/migration`). `V1__shema_iz_prisme.sql`
+  je shema vseh 11 nekdanjih Prisma migracij. Sprememba sheme = nova datoteka `V2__opis.sql` (nikoli ne spreminjaj
+  že izvedene migracije). API ima `ddl-auto: validate`: ob zagonu preveri, da se entitete ujemajo s tabelami.
+- **Ob zagonu API** (`PrismaBaselineMigrationStrategy`):
+  - prazna baza → Flyway izvede vse migracije;
+  - baza iz stare aplikacije (tabela `_prisma_migrations`) z vsemi Prisma migracijami → označi se kot V1 brez
+    sprememb; če ji katera manjka, se API ne zažene (najprej jo posodobi s staro aplikacijo);
+  - baza z `flyway_schema_history` → izvedejo se samo nove migracije;
+  - neprazna baza brez obeh zgodovin (tuje tabele) → API se ne zažene in je ne spreminja.
 - **Pasti pri preslikavi Prisma sheme v JPA** (že urejene v `application.yml` in `TimestampedJpaEntity`):
   - Stolpci so camelCase v narekovajih (`"createdAt"`), zato je nastavljena strategija poimenovanja brez snake_case.
   - Časi so `TIMESTAMP(3)` v UTC, zato je nastavljen `hibernate.jdbc.time_zone: UTC`. Test
@@ -188,7 +189,8 @@ Compose za strežnik je v `teren-server/docker-compose.yml`: brez servisa `db`, 
    računalnika (`scp`) v koren kot `.env`.
 2. Na strežniku baze ustvari uporabnika in bazo z geslom `DB_PASSWORD` iz `.env`; `pg_hba.conf` mora
    dovoliti povezave z IP-ja novega strežnika.
-3. `docker compose up -d --build`. Teren ob zagonu v bazi ustvari oziroma posodobi shemo (Prisma).
+3. `docker compose up -d --build`. API v prazni bazi ustvari shemo in (s `SEED_ADMIN_EMAIL`) prvega admina;
+   bazo iz stare aplikacije označi kot izhodišče brez sprememb (glej [Baza in shema](#baza-in-shema--pomembno)).
 4. Za prenos testnih podatkov: `docker compose exec -T db pg_dump -U teren -Fc teren > teren.dump`
    na tem računalniku, nato `pg_restore` v prazno ciljno bazo **pred** prvim zagonom.
 
@@ -205,7 +207,7 @@ Prehod poteka po kontekstih; po vsakem koraku aplikacija v celoti deluje.
 | 4a | **Delovni nalogi – branje**: seznam s filtri, podrobnosti, PDF, oba izvoza | narejeno |
 | 4b | **Delovni nalogi – pisanje**: vnos, urejanje z zgodovino, fotografije, podpis, e-pošta | narejeno |
 | 5 | **Plan**: dogodki in planirana opravila | narejeno |
-| 6 | Shemo prevzame API (Flyway, izhodišče je `teren-schema.sql`); aplikaciji se odvzameta Prisma in `DATABASE_URL` | |
+| 6 | Shemo prevzame API (Flyway); aplikaciji se odvzameta Prisma in `DATABASE_URL`, prvega admina ustvari API | narejeno |
 
 Kako aplikacija kliče API:
 
@@ -214,4 +216,4 @@ Kako aplikacija kliče API:
 - En modul na kontekst (`teren/src/lib/api/clients.ts` …), samo na strežniku (`server-only`).
 - Pravice uporabnika (`canManageClients` …) preveri aplikacija pred klicem. API zaupa vsakemu, ki ima
   žeton, zato ne sme biti dosegljiv od zunaj (na strežniku nima objavljenega porta).
-- Dokler korak ni narejen, ostali deli še berejo bazo s Prismo (npr. ime stranke pri delovnem nalogu).
+- Aplikacija nima dostopa do baze (ne `DATABASE_URL` ne Prisme); fotografije in podpise hrani na svojem disku.
