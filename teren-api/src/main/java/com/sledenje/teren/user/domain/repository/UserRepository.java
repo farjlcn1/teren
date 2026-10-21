@@ -3,6 +3,7 @@ package com.sledenje.teren.user.domain.repository;
 import com.sledenje.teren.user.domain.model.StoredCredentials;
 import com.sledenje.teren.user.domain.model.User;
 import com.sledenje.teren.user.domain.model.UserPermissions;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,9 +32,11 @@ public interface UserRepository {
     Optional<User> updateAccess(String userId, boolean isActive, UserPermissions permissions);
 
     /**
+     * Zamenja geslo in prekliče seje, izdane pred {@code changedAt}.
+     *
      * @return {@code false}, če uporabnik s tem ID-jem ne obstaja
      */
-    boolean updatePasswordHash(String userId, String passwordHash);
+    boolean updatePassword(String userId, String passwordHash, Instant changedAt);
 
     void deleteUserById(String userId);
 

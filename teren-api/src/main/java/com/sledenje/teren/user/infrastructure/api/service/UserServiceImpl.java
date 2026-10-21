@@ -11,6 +11,8 @@ import com.sledenje.teren.user.domain.model.UserPermissions;
 import com.sledenje.teren.user.domain.repository.UserRepository;
 import com.sledenje.teren.user.domain.service.PasswordHasher;
 import com.sledenje.teren.user.domain.service.UserService;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,10 +72,11 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void changePassword(String userId, String password) {
         requireStrongPassword(password);
-        if (!userRepository.updatePasswordHash(userId, passwordHasher.hash(password))) {
+        Instant changedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        if (!userRepository.updatePassword(userId, passwordHasher.hash(password), changedAt)) {
             throw new UserNotFoundException(userId);
         }
-        log.info("Spremenjeno geslo uporabnika {}", userId);
+        log.info("Spremenjeno geslo uporabnika {}; obstoječe seje so preklicane", userId);
     }
 
     @Override

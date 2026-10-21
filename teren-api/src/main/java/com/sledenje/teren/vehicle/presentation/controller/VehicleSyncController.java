@@ -40,7 +40,7 @@ public class VehicleSyncController {
 
     @PutMapping("/sync-config")
     @Operation(summary = "Shranjevanje povezave",
-            description = "Prazen žeton obdrži obstoječega, prazen URL izbriše povezavo skupaj z žetonom.")
+            description = "Prazen žeton obdrži obstoječega, če se URL ne spremeni; prazen URL izbriše povezavo skupaj z žetonom.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Nastavitve shranjene"),
             @ApiResponse(responseCode = "400", description = "Neveljaven URL",

@@ -46,8 +46,9 @@ public class VehicleSyncServiceImpl implements VehicleSyncService {
         String newApiToken = blankToNull(apiToken);
         if (newApiUrl == null) {
             newApiToken = null;
-        } else if (newApiToken == null) {
-            // Obrazec žetona ne prikaže; prazno polje pomeni "obdrži obstoječega".
+        } else if (newApiToken == null && newApiUrl.equals(findSyncConfig().apiUrl())) {
+            // Obrazec žetona ne prikaže; prazno polje obdrži obstoječega, a samo za isti URL. Ob novem URL-ju
+            // bi sicer stari žeton odšel na drug strežnik (npr. napadalčev).
             newApiToken = findSyncConfig().apiToken();
         }
         VehicleSyncConfig savedConfig = vehicleSyncConfigRepository.saveConnection(newApiUrl, newApiToken);

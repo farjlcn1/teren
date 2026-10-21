@@ -9,7 +9,7 @@ import java.util.List;
  *
  * @param ident        številka naloga, unikatna
  * @param signatureUrl pot do slike podpisa v mapi z naloženimi datotekami aplikacije
- * @param lockedAt     čas, od katerega naloga ni več mogoče urejati
+ * @param lockedAt     čas zaklepa ob podpisu (aplikacija ga prikaže kot "Zaklenjen")
  * @param sentAt       čas zadnjega pošiljanja po e-pošti
  */
 public record WorkOrder(

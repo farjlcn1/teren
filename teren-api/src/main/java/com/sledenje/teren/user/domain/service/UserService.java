@@ -37,6 +37,8 @@ public interface UserService {
     User updateAccess(String userId, boolean isActive, UserPermissions permissions);
 
     /**
+     * Nastavi novo geslo in prekliče vse obstoječe seje uporabnika (glej {@link User#sessionsValidFrom()}).
+     *
      * @throws UserNotFoundException če uporabnik s tem ID-jem ne obstaja
      * @throws WeakPasswordException če geslo ne ustreza pravilom
      */

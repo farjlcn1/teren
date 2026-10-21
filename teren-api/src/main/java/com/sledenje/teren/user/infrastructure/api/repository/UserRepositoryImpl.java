@@ -7,6 +7,7 @@ import com.sledenje.teren.user.domain.repository.UserRepository;
 import com.sledenje.teren.user.infrastructure.persistence.UserJpaEntity;
 import com.sledenje.teren.user.infrastructure.persistence.UserJpaRepository;
 import com.sledenje.teren.user.infrastructure.util.UserJpaConverter;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,10 +72,10 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
-    public boolean updatePasswordHash(String userId, String passwordHash) {
+    public boolean updatePassword(String userId, String passwordHash, Instant changedAt) {
         return userJpaRepository.findById(userId)
                 .map(entity -> {
-                    entity.changePasswordHash(passwordHash);
+                    entity.changePassword(passwordHash, changedAt);
                     userJpaRepository.save(entity);
                     return true;
                 })

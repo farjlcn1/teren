@@ -27,7 +27,7 @@ public record WorkOrderDto(
         @Schema(nullable = true) String comment,
         @Schema(description = "Pot do slike podpisa", nullable = true) String signatureUrl,
         @Schema(nullable = true) Instant signedAt,
-        @Schema(description = "Od tega trenutka naloga ni mogoče urejati", nullable = true) Instant lockedAt,
+        @Schema(description = "Čas zaklepa (ob podpisu); aplikacija ga prikaže kot \"Zaklenjen\"", nullable = true) Instant lockedAt,
         @Schema(description = "Zadnje pošiljanje po e-pošti", nullable = true) Instant sentAt,
         UserReferenceDto createdBy,
         Instant createdAt,

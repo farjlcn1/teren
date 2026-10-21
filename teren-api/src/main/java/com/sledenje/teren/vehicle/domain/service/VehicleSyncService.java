@@ -13,8 +13,8 @@ public interface VehicleSyncService {
     VehicleSyncConfig findSyncConfig();
 
     /**
-     * Shrani povezavo do zunanjega sistema. Prazen {@code apiToken} obdrži obstoječi žeton,
-     * prazen {@code apiUrl} pa izbriše povezavo skupaj z žetonom.
+     * Shrani povezavo do zunanjega sistema. Prazen {@code apiToken} obdrži obstoječi žeton, če se URL ne spremeni
+     * (ob novem URL-ju je brez žetona); prazen {@code apiUrl} izbriše povezavo skupaj z žetonom.
      */
     VehicleSyncConfig updateSyncConfig(String apiUrl, String apiToken);
 

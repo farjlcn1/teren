@@ -21,6 +21,8 @@ public record UserDto(
         boolean canManageClients,
         boolean canManageVehicles,
         boolean canManagePlan,
+        @Schema(description = "Seje (piškotki aplikacije), izdane pred tem časom, ne veljajo (UTC)", nullable = true)
+        Instant sessionsValidFrom,
         @Schema(description = "Čas vnosa (UTC)")
         Instant createdAt,
         @Schema(description = "Čas zadnje spremembe (UTC)")

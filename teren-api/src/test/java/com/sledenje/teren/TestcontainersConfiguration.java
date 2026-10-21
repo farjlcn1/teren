@@ -29,7 +29,11 @@ public class TestcontainersConfiguration {
 
     @Bean
     DynamicPropertyRegistrar apiTokenProperties() {
-        return registry -> registry.add("teren.api.token", () -> API_TOKEN);
+        return registry -> {
+            registry.add("teren.api.token", () -> API_TOKEN);
+            // Testi sinhronizacije uporabljajo lažni zunanji sistem na 127.0.0.1.
+            registry.add("teren.api.sync.allow-local-addresses", () -> "true");
+        };
     }
 
 }

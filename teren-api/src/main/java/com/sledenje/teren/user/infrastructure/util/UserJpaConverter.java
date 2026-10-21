@@ -28,6 +28,7 @@ public final class UserJpaConverter {
                         entity.isCanManageClients(),
                         entity.isCanManageVehicles(),
                         entity.isCanManagePlan()),
+                entity.getSessionsValidFrom(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt());
     }

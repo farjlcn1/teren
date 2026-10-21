@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 
 @Entity
 @Table(name = "users")
@@ -49,6 +50,8 @@ public class UserJpaEntity extends TimestampedJpaEntity {
     @Column(nullable = false)
     private boolean canManagePlan;
 
+    private Instant sessionsValidFrom;
+
     protected UserJpaEntity() {
     }
 
@@ -77,8 +80,12 @@ public class UserJpaEntity extends TimestampedJpaEntity {
         this.canManagePlan = canManagePlan;
     }
 
-    public void changePasswordHash(String passwordHash) {
+    /**
+     * Novo geslo prekliče vse obstoječe seje uporabnika.
+     */
+    public void changePassword(String passwordHash, Instant changedAt) {
         this.passwordHash = passwordHash;
+        this.sessionsValidFrom = changedAt;
     }
 
     @Override
@@ -132,6 +139,10 @@ public class UserJpaEntity extends TimestampedJpaEntity {
 
     public boolean isCanManagePlan() {
         return canManagePlan;
+    }
+
+    public Instant getSessionsValidFrom() {
+        return sessionsValidFrom;
     }
 
 }

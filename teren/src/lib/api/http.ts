@@ -13,6 +13,15 @@ export class ApiError extends Error {
   }
 }
 
+// ID-ji so cuid (Prisma) ali UUID (API). Drugačna vrednost (npr. "..") bi spremenila pot klica do API-ja,
+// zato se obravnava kot neobstoječ zapis.
+export function pathSegment(id: string): string {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+    throw new ApiError(404, "Zapis ne obstaja.");
+  }
+  return id;
+}
+
 type ApiRequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;

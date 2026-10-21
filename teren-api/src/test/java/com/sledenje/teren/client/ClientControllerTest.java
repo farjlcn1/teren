@@ -15,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.sledenje.teren.TestcontainersConfiguration;
+import java.net.URI;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -70,6 +72,21 @@ class ClientControllerTest {
     void requestWithWrongTokenIsRejected() throws Exception {
         mockMvc.perform(get("/api/v1/clients").header(HttpHeaders.AUTHORIZATION, "Bearer napacen-zeton"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void pathTricksDoNotBypassToken() throws Exception {
+        for (String path : List.of("/api;x/v1/clients", "/%61pi/v1/clients", "/api/v1/clients;x",
+                "/actuator/health/../../api/v1/clients", "//api/v1/clients", "/v3/api-docs/../../api/v1/clients")) {
+            mockMvc.perform(get(URI.create(path)))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test
+    void apiDocsDoNotRequireToken() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -89,7 +89,10 @@ class AuthenticationControllerTest {
                 .andExpect(status().isNoContent());
 
         login("stari@example.com", "Staro-geslo1").andExpect(status().isUnauthorized());
-        login("stari@example.com", "Novo-geslo2!").andExpect(status().isOk());
+        login("stari@example.com", "Novo-geslo2!")
+                .andExpect(status().isOk())
+                // Nova sprememba gesla prekliče stare seje v aplikaciji.
+                .andExpect(jsonPath("$.sessionsValidFrom").exists());
     }
 
     @Test

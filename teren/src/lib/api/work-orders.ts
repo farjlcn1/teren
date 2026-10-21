@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError, apiRequest } from "./http";
+import { ApiError, apiRequest, pathSegment } from "./http";
 
 // API vrača čase kot ISO nize (UTC); tu se pretvorijo v Date, da strani in PDF ostanejo nespremenjeni.
 
@@ -119,7 +119,7 @@ export async function listWorkOrders(search: WorkOrderSearch): Promise<WorkOrder
 // S fotografijami (po času nalaganja) in zgodovino urejanj (najnovejše prvo).
 export async function findWorkOrder(id: string): Promise<WorkOrderDetail | null> {
   try {
-    return toWorkOrderDetail(await apiRequest<WorkOrderDetailJson>(`${BASE}/${encodeURIComponent(id)}`));
+    return toWorkOrderDetail(await apiRequest<WorkOrderDetailJson>(`${BASE}/${pathSegment(id)}`));
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
@@ -162,14 +162,14 @@ export function addWorkOrderAttachments(
   id: string,
   attachments: { signatureUrl: string | null; photos: { filePath: string; takenAt: Date | null }[] }
 ): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}/attachments`, { method: "POST", body: attachments });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}/attachments`, { method: "POST", body: attachments });
 }
 
 // Spremembe API zapiše v zgodovino urejanj (monterji in opcije se zamenjajo v celoti).
 export function updateWorkOrder(id: string, input: { details: WorkOrderDetailsInput; editedById: string }): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: input });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}`, { method: "PUT", body: input });
 }
 
 export function markWorkOrderSent(id: string): Promise<void> {
-  return apiRequest<void>(`${BASE}/${encodeURIComponent(id)}/sent`, { method: "POST" });
+  return apiRequest<void>(`${BASE}/${pathSegment(id)}/sent`, { method: "POST" });
 }

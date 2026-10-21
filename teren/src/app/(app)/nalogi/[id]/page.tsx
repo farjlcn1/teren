@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { findWorkOrder } from "@/lib/api/work-orders";
+import { canAccessWorkOrder } from "@/lib/work-orders/access";
 import { SendEmailForm } from "./send-email-form";
 import { ImageLightbox } from "@/components/image-lightbox";
 
@@ -47,7 +48,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
   if (!order) notFound();
 
-  if (!user.canViewAllOrders && order.createdById !== user.id) {
+  if (!canAccessWorkOrder(user, order)) {
     redirect("/nalogi");
   }
 

@@ -69,6 +69,11 @@ class ClientSyncControllerTest {
                 responseBody.write(body);
             }
         });
+        externalSystem.createContext("/preusmeritev", exchange -> {
+            exchange.getResponseHeaders().add(HttpHeaders.LOCATION, "/stranke");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
         externalSystem.start();
     }
 
@@ -192,6 +197,26 @@ class ClientSyncControllerTest {
 
         mockMvc.perform(authorized(get("/api/v1/clients/sync-config")))
                 .andExpect(jsonPath("$.lastSyncStatus").value("Napaka: HTTP 500"));
+    }
+
+    @Test
+    void changingUrlWithoutTokenDropsOldToken() throws Exception {
+        saveConnection(externalUrl(), EXTERNAL_TOKEN);
+        saveConnection(externalUrl() + "?drug=1", "");
+
+        mockMvc.perform(authorized(get("/api/v1/clients/sync-config")))
+                .andExpect(jsonPath("$.hasToken").value(false));
+    }
+
+    @Test
+    void redirectsAreNotFollowed() throws Exception {
+        saveConnection(externalUrl().replace("/stranke", "/preusmeritev"), EXTERNAL_TOKEN);
+        externalBody = "[{\"externalId\": \"R-1\", \"name\": \"Preusmerjena\"}]";
+
+        mockMvc.perform(authorized(post("/api/v1/clients/sync")))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.detail").value("Sinhronizacija ni uspela: preusmeritve niso dovoljene"));
+        assertThat(receivedAuthorization).isNull();
     }
 
     @Test

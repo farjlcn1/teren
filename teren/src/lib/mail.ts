@@ -1,7 +1,7 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { generateWorkOrderPdf } from "@/lib/work-orders/pdf";
-import { findWorkOrder, markWorkOrderSent } from "@/lib/api/work-orders";
+import { markWorkOrderSent, type WorkOrderDetail } from "@/lib/api/work-orders";
 
 function getTransport() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD } = process.env;
@@ -23,10 +23,8 @@ function getTransport() {
   });
 }
 
-export async function sendWorkOrderEmail(workOrderId: string, toEmail: string) {
-  const order = await findWorkOrder(workOrderId);
-  if (!order) throw new Error("Nalog ne obstaja.");
-
+// Klicatelj nalog prebere in preveri pravico uporabnika do njega (canAccessWorkOrder).
+export async function sendWorkOrderEmail(order: WorkOrderDetail, toEmail: string) {
   const pdfBuffer = await generateWorkOrderPdf(order);
   const transport = getTransport();
 
@@ -38,5 +36,5 @@ export async function sendWorkOrderEmail(workOrderId: string, toEmail: string) {
     attachments: [{ filename: `nalog-${order.ident}.pdf`, content: pdfBuffer }],
   });
 
-  await markWorkOrderSent(workOrderId);
+  await markWorkOrderSent(order.id);
 }
