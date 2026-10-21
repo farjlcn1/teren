@@ -1,7 +1,9 @@
 package com.sledenje.teren.client.domain.service;
 
+import com.sledenje.teren.client.domain.exception.ClientInUseException;
 import com.sledenje.teren.client.domain.exception.ClientNotFoundException;
 import com.sledenje.teren.client.domain.model.Client;
+import com.sledenje.teren.client.domain.model.ClientUpdate;
 import com.sledenje.teren.client.domain.model.NewClient;
 import java.util.List;
 
@@ -26,5 +28,23 @@ public interface ClientService {
      * @return shranjena stranka z dodeljenim ID-jem
      */
     Client createClient(NewClient newClient);
+
+    /**
+     * Doda stranke iz uvožene datoteke (izvor {@code IMPORT}). Shranijo se vse ali nobena.
+     *
+     * @return število dodanih strank
+     */
+    int importClients(List<NewClient> newClients);
+
+    /**
+     * @throws ClientNotFoundException če stranka s tem ID-jem ne obstaja
+     */
+    Client updateClient(String clientId, ClientUpdate clientUpdate);
+
+    /**
+     * @throws ClientNotFoundException če stranka s tem ID-jem ne obstaja
+     * @throws ClientInUseException    če ima stranka delovne naloge ali dogodke v planu
+     */
+    void deleteClient(String clientId);
 
 }

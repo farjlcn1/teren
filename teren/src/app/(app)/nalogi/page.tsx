@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
+import { listClientOptions } from "@/lib/api/clients";
 import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
 import { ColumnPicker, type ColumnDef } from "./column-picker";
 import { AdminExportButton } from "./admin-export-button";
@@ -142,7 +143,7 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
       include: { client: true, installers: true, options: true, deviceModels: true },
       take: 500,
     }),
-    prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    listClientOptions(),
     prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
     prisma.workOrder.findMany({ distinct: ["imei"], orderBy: { imei: "asc" }, select: { imei: true } }),
   ]);

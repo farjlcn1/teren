@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
+import { listClientOptions } from "@/lib/api/clients";
 import { WorkOrderForm } from "./work-order-form";
 
 export default async function NovNalogPage({
@@ -12,7 +13,7 @@ export default async function NovNalogPage({
   const { planTaskId } = await searchParams;
 
   const [clients, vehicles, plannedTask] = await Promise.all([
-    prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    listClientOptions(),
     prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
     planTaskId
       ? prisma.plannedTask.findUnique({

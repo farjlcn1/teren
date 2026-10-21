@@ -1,6 +1,8 @@
 package com.sledenje.teren.common.presentation.controller;
 
 import com.sledenje.teren.common.domain.exception.DomainException;
+import com.sledenje.teren.common.domain.exception.ExternalServiceException;
+import com.sledenje.teren.common.domain.exception.ResourceConflictException;
 import com.sledenje.teren.common.domain.exception.ResourceNotFoundException;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -28,6 +30,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleResourceNotFound(ResourceNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ResourceConflictException.class)
+    public ProblemDetail handleResourceConflict(ResourceConflictException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(ExternalServiceException.class)
+    public ProblemDetail handleExternalServiceException(ExternalServiceException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, exception.getMessage());
     }
 
     @ExceptionHandler(DomainException.class)
