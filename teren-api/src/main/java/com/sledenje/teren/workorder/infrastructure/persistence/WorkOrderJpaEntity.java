@@ -1,10 +1,11 @@
 package com.sledenje.teren.workorder.infrastructure.persistence;
 
+import com.sledenje.teren.common.domain.model.WorkOrderType;
 import com.sledenje.teren.common.infrastructure.persistence.TimestampedJpaEntity;
 import com.sledenje.teren.workorder.domain.model.Culprit;
 import com.sledenje.teren.workorder.domain.model.Difficulty;
 import com.sledenje.teren.workorder.domain.model.WorkOrderStatus;
-import com.sledenje.teren.workorder.domain.model.WorkOrderType;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -97,35 +98,70 @@ public class WorkOrderJpaEntity extends TimestampedJpaEntity {
     private WorkOrderUserJpaEntity createdBy;
 
     // Vrstni red enumov v Postgresu je vrstni red v obrazcu.
-    @OneToMany
-    @JoinColumn(name = "workOrderId", nullable = false)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("name")
     @BatchSize(size = BATCH_SIZE)
     private List<WorkOrderInstallerJpaEntity> installers = new ArrayList<>();
 
-    @OneToMany
-    @JoinColumn(name = "workOrderId", nullable = false)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("optionType")
     @BatchSize(size = BATCH_SIZE)
     private List<WorkOrderOptionJpaEntity> options = new ArrayList<>();
 
-    @OneToMany
-    @JoinColumn(name = "workOrderId", nullable = false)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("deviceModel")
     @BatchSize(size = BATCH_SIZE)
     private List<WorkOrderDeviceModelJpaEntity> deviceModels = new ArrayList<>();
 
-    @OneToMany
-    @JoinColumn(name = "workOrderId", nullable = false)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("uploadedAt ASC, id ASC")
     private List<WorkOrderPhotoJpaEntity> photos = new ArrayList<>();
 
-    @OneToMany
-    @JoinColumn(name = "workOrderId", nullable = false)
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("editedAt DESC")
     private List<WorkOrderEditJpaEntity> edits = new ArrayList<>();
 
     protected WorkOrderJpaEntity() {
+    }
+
+    /**
+     * Nov aktiven nalog brez podpisa; monterji, opcije in modeli naprav se dodajo v zbirke.
+     */
+    public WorkOrderJpaEntity(String id, String ident, Instant orderDate, WorkOrderUserJpaEntity createdBy) {
+        this.id = id;
+        this.ident = ident;
+        this.orderDate = orderDate;
+        this.createdBy = createdBy;
+        this.status = WorkOrderStatus.ACTIVE;
+    }
+
+    public void updateDetails(WorkOrderType type, Difficulty difficulty, WorkOrderClientJpaEntity client,
+            String vehiclePlate, String vehicleBrand, String vehicleModel, int vehicleYear, String imei,
+            String imeiPrev, Culprit culprit, String comment) {
+        this.type = type;
+        this.difficulty = difficulty;
+        this.client = client;
+        this.vehiclePlate = vehiclePlate;
+        this.vehicleBrand = vehicleBrand;
+        this.vehicleModel = vehicleModel;
+        this.vehicleYear = vehicleYear;
+        this.imei = imei;
+        this.imeiPrev = imeiPrev;
+        this.culprit = culprit;
+        this.comment = comment;
+    }
+
+    /**
+     * Podpis zaklene nalog.
+     */
+    public void sign(String signatureUrl, Instant signedAt) {
+        this.signatureUrl = signatureUrl;
+        this.signedAt = signedAt;
+        this.lockedAt = signedAt;
+    }
+
+    public void markSent(Instant sentAt) {
+        this.sentAt = sentAt;
     }
 
     @Override

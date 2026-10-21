@@ -46,4 +46,10 @@ public interface VehicleService {
      */
     void deleteVehicle(String vehicleId);
 
+    /**
+     * Doda vozilo (izvor {@code MANUAL}), če registrske številke še ni; obstoječega ne spremeni.
+     * Kliče se ob vnosu in urejanju delovnega naloga, tudi hkrati z drugim vnosom iste registrske.
+     */
+    void ensureVehicleExists(String plate);
+
 }

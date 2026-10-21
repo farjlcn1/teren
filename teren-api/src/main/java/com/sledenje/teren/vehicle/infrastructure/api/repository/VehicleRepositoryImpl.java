@@ -8,6 +8,8 @@ import com.sledenje.teren.vehicle.domain.repository.VehicleRepository;
 import com.sledenje.teren.vehicle.infrastructure.persistence.VehicleJpaEntity;
 import com.sledenje.teren.vehicle.infrastructure.persistence.VehicleJpaRepository;
 import com.sledenje.teren.vehicle.infrastructure.util.VehicleJpaConverter;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,6 +66,12 @@ public class VehicleRepositoryImpl implements VehicleRepository {
     @Override
     public void deleteVehicleById(String vehicleId) {
         vehicleJpaRepository.deleteById(vehicleId);
+    }
+
+    @Override
+    public void insertVehicleIfMissing(String plate, VehicleSource source) {
+        vehicleJpaRepository.insertIfPlateMissing(newVehicleId(), plate, source.name(),
+                Instant.now().truncatedTo(ChronoUnit.MILLIS));
     }
 
     @Override

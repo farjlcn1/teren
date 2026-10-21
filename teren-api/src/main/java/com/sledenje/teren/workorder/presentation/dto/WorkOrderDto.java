@@ -1,9 +1,9 @@
 package com.sledenje.teren.workorder.presentation.dto;
 
+import com.sledenje.teren.common.domain.model.WorkOrderType;
 import com.sledenje.teren.workorder.domain.model.Culprit;
 import com.sledenje.teren.workorder.domain.model.Difficulty;
 import com.sledenje.teren.workorder.domain.model.WorkOrderStatus;
-import com.sledenje.teren.workorder.domain.model.WorkOrderType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;

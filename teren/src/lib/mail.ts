@@ -1,8 +1,7 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { generateWorkOrderPdf } from "@/lib/work-orders/pdf";
-import { findWorkOrder } from "@/lib/api/work-orders";
-import { prisma } from "@/lib/db";
+import { findWorkOrder, markWorkOrderSent } from "@/lib/api/work-orders";
 
 function getTransport() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD } = process.env;
@@ -39,5 +38,5 @@ export async function sendWorkOrderEmail(workOrderId: string, toEmail: string) {
     attachments: [{ filename: `nalog-${order.ident}.pdf`, content: pdfBuffer }],
   });
 
-  await prisma.workOrder.update({ where: { id: workOrderId }, data: { sentAt: new Date() } });
+  await markWorkOrderSent(workOrderId);
 }

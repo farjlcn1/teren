@@ -90,6 +90,15 @@ public class VehicleServiceImpl implements VehicleService {
 
     @Override
     @Transactional
+    public void ensureVehicleExists(String plate) {
+        String normalizedPlate = Vehicle.normalizePlate(plate);
+        if (!normalizedPlate.isEmpty()) {
+            vehicleRepository.insertVehicleIfMissing(normalizedPlate, VehicleSource.MANUAL);
+        }
+    }
+
+    @Override
+    @Transactional
     public void deleteVehicle(String vehicleId) {
         if (!vehicleRepository.existsVehicleById(vehicleId)) {
             throw new VehicleNotFoundException(vehicleId);

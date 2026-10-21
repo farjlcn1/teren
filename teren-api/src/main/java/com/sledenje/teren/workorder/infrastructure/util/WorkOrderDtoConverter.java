@@ -1,13 +1,23 @@
 package com.sledenje.teren.workorder.infrastructure.util;
 
+import com.sledenje.teren.workorder.domain.model.DeviceModelEntry;
+import com.sledenje.teren.workorder.domain.model.InstallerEntry;
+import com.sledenje.teren.workorder.domain.model.NewWorkOrder;
+import com.sledenje.teren.workorder.domain.model.OptionEntry;
+import com.sledenje.teren.workorder.domain.model.PhotoEntry;
 import com.sledenje.teren.workorder.domain.model.UserReference;
 import com.sledenje.teren.workorder.domain.model.WorkOrder;
+import com.sledenje.teren.workorder.domain.model.WorkOrderAttachments;
 import com.sledenje.teren.workorder.domain.model.WorkOrderDetail;
+import com.sledenje.teren.workorder.domain.model.WorkOrderDetails;
 import com.sledenje.teren.workorder.domain.model.WorkOrderSearch;
 import com.sledenje.teren.workorder.domain.model.WorkOrderSortField;
+import com.sledenje.teren.workorder.presentation.dto.CreateWorkOrderRequest;
 import com.sledenje.teren.workorder.presentation.dto.UserReferenceDto;
 import com.sledenje.teren.workorder.presentation.dto.WorkOrderClientDto;
+import com.sledenje.teren.workorder.presentation.dto.WorkOrderAttachmentsRequest;
 import com.sledenje.teren.workorder.presentation.dto.WorkOrderDetailDto;
+import com.sledenje.teren.workorder.presentation.dto.WorkOrderDetailsRequest;
 import com.sledenje.teren.workorder.presentation.dto.WorkOrderDeviceModelDto;
 import com.sledenje.teren.workorder.presentation.dto.WorkOrderDto;
 import com.sledenje.teren.workorder.presentation.dto.WorkOrderEditDto;
@@ -106,6 +116,50 @@ public final class WorkOrderDtoConverter {
                         .map(edit -> new WorkOrderEditDto(
                                 edit.id(), edit.editedAt(), toDto(edit.editedBy()), edit.changesJson()))
                         .toList());
+    }
+
+    public static NewWorkOrder toNewWorkOrder(CreateWorkOrderRequest request) {
+        return new NewWorkOrder(
+                toDetails(request.details()),
+                request.deviceModels().stream()
+                        .map(deviceModel -> new DeviceModelEntry(deviceModel.deviceModel(), blankToNull(deviceModel.comment())))
+                        .toList(),
+                request.createdById(),
+                blankToNull(request.plannedTaskId()));
+    }
+
+    /**
+     * Prazna neobvezna polja so {@code null}. Besedila se ne obrežejo (kot v aplikaciji).
+     */
+    public static WorkOrderDetails toDetails(WorkOrderDetailsRequest request) {
+        return new WorkOrderDetails(
+                request.type(),
+                request.difficulty(),
+                request.clientId(),
+                request.vehiclePlate(),
+                request.vehicleBrand(),
+                request.vehicleModel(),
+                request.vehicleYear(),
+                request.imei(),
+                emptyToNull(request.imeiPrev()),
+                request.culprit(),
+                emptyToNull(request.comment()),
+                request.installers().stream()
+                        .map(installer -> new InstallerEntry(installer.name(), blankToNull(installer.otherText())))
+                        .toList(),
+                request.options().stream()
+                        .map(option -> new OptionEntry(option.optionType(), emptyToNull(option.comment())))
+                        .toList());
+    }
+
+    public static WorkOrderAttachments toAttachments(WorkOrderAttachmentsRequest request) {
+        return new WorkOrderAttachments(
+                blankToNull(request.signatureUrl()),
+                request.photos().stream().map(photo -> new PhotoEntry(photo.filePath(), photo.takenAt())).toList());
+    }
+
+    private static String emptyToNull(String value) {
+        return value == null || value.isEmpty() ? null : value;
     }
 
     private static UserReferenceDto toDto(UserReference user) {

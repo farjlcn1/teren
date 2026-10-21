@@ -1,13 +1,25 @@
 package com.sledenje.teren.workorder.infrastructure.api.repository;
 
+import com.sledenje.teren.workorder.domain.model.CreatedWorkOrder;
+import com.sledenje.teren.workorder.domain.model.DeviceModelEntry;
+import com.sledenje.teren.workorder.domain.model.PhotoEntry;
+import com.sledenje.teren.workorder.domain.model.ValueChange;
 import com.sledenje.teren.workorder.domain.model.WorkOrder;
+import com.sledenje.teren.workorder.domain.model.WorkOrderAttachments;
 import com.sledenje.teren.workorder.domain.model.WorkOrderDetail;
+import com.sledenje.teren.workorder.domain.model.WorkOrderDetails;
 import com.sledenje.teren.workorder.domain.model.WorkOrderSearch;
 import com.sledenje.teren.workorder.domain.model.WorkOrderSortField;
 import com.sledenje.teren.workorder.domain.repository.WorkOrderRepository;
 import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderClientJpaEntity;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderDeviceModelJpaEntity;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderEditJpaEntity;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderInstallerJpaEntity;
 import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderJpaEntity;
 import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderJpaRepository;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderOptionJpaEntity;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderPhotoJpaEntity;
+import com.sledenje.teren.workorder.infrastructure.persistence.WorkOrderUserJpaEntity;
 import com.sledenje.teren.workorder.infrastructure.util.WorkOrderJpaConverter;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -20,11 +32,15 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import tools.jackson.databind.json.JsonMapper;
 
 @Repository
 public class WorkOrderRepositoryImpl implements WorkOrderRepository {
@@ -32,12 +48,14 @@ public class WorkOrderRepositoryImpl implements WorkOrderRepository {
     private static final char LIKE_ESCAPE = '\\';
 
     private final WorkOrderJpaRepository workOrderJpaRepository;
+    private final JsonMapper jsonMapper;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public WorkOrderRepositoryImpl(WorkOrderJpaRepository workOrderJpaRepository) {
+    public WorkOrderRepositoryImpl(WorkOrderJpaRepository workOrderJpaRepository, JsonMapper jsonMapper) {
         this.workOrderJpaRepository = workOrderJpaRepository;
+        this.jsonMapper = jsonMapper;
     }
 
     @Override
@@ -75,6 +93,103 @@ public class WorkOrderRepositoryImpl implements WorkOrderRepository {
     @Override
     public List<String> findDistinctImeis() {
         return workOrderJpaRepository.findDistinctImeis();
+    }
+
+    @Override
+    public boolean existsClient(String clientId) {
+        return entityManager.find(WorkOrderClientJpaEntity.class, clientId) != null;
+    }
+
+    @Override
+    public boolean existsUser(String userId) {
+        return entityManager.find(WorkOrderUserJpaEntity.class, userId) != null;
+    }
+
+    @Override
+    public int nextDailySequence(LocalDate day) {
+        // En SQL stavek: hkratna vnosa istega dne dobita različni številki.
+        Number lastNumber = (Number) entityManager.createNativeQuery("""
+                        INSERT INTO "daily_sequence" ("orderDate", "lastNumber")
+                        VALUES (:day, 1)
+                        ON CONFLICT ("orderDate")
+                        DO UPDATE SET "lastNumber" = "daily_sequence"."lastNumber" + 1
+                        RETURNING "lastNumber"
+                        """)
+                .setParameter("day", day)
+                .getSingleResult();
+        return lastNumber.intValue();
+    }
+
+    @Override
+    public CreatedWorkOrder saveNewWorkOrder(String ident, Instant orderDate, WorkOrderDetails details,
+            List<DeviceModelEntry> deviceModels, String createdById) {
+        WorkOrderJpaEntity entity = new WorkOrderJpaEntity(newId(), ident, orderDate,
+                entityManager.getReference(WorkOrderUserJpaEntity.class, createdById));
+        applyDetails(entity, details);
+        deviceModels.forEach(deviceModel -> entity.getDeviceModels().add(new WorkOrderDeviceModelJpaEntity(
+                newId(), entity, deviceModel.deviceModel(), deviceModel.comment())));
+        WorkOrderJpaEntity savedEntity = workOrderJpaRepository.save(entity);
+        return new CreatedWorkOrder(savedEntity.getId(), savedEntity.getIdent());
+    }
+
+    @Override
+    public void updateWorkOrder(String workOrderId, WorkOrderDetails details, String editedById, Instant editedAt,
+            Map<String, ValueChange> changes) {
+        WorkOrderJpaEntity entity = workOrderJpaRepository.getReferenceById(workOrderId);
+        // Najprej izbriši stare monterje in opcije, da nove iste vrste ne kršijo unikatnosti (nalog, opcija).
+        entity.getInstallers().clear();
+        entity.getOptions().clear();
+        entityManager.flush();
+        applyDetails(entity, details);
+        entity.getEdits().add(new WorkOrderEditJpaEntity(newId(), entity, editedAt,
+                entityManager.getReference(WorkOrderUserJpaEntity.class, editedById),
+                jsonMapper.writeValueAsString(changes)));
+    }
+
+    @Override
+    public boolean addAttachments(String workOrderId, WorkOrderAttachments attachments, Instant addedAt) {
+        return workOrderJpaRepository.findById(workOrderId).map(entity -> {
+            if (attachments.signatureUrl() != null) {
+                entity.sign(attachments.signatureUrl(), addedAt);
+            }
+            for (PhotoEntry photo : attachments.photos()) {
+                entity.getPhotos().add(new WorkOrderPhotoJpaEntity(
+                        newId(), entity, photo.filePath(), photo.takenAt(), addedAt));
+            }
+            return true;
+        }).orElse(false);
+    }
+
+    @Override
+    public boolean markSent(String workOrderId, Instant sentAt) {
+        return workOrderJpaRepository.findById(workOrderId).map(entity -> {
+            entity.markSent(sentAt);
+            return true;
+        }).orElse(false);
+    }
+
+    private void applyDetails(WorkOrderJpaEntity entity, WorkOrderDetails details) {
+        entity.updateDetails(
+                details.type(),
+                details.difficulty(),
+                entityManager.getReference(WorkOrderClientJpaEntity.class, details.clientId()),
+                details.vehiclePlate(),
+                details.vehicleBrand(),
+                details.vehicleModel(),
+                details.vehicleYear(),
+                details.imei(),
+                details.imeiPrev(),
+                details.culprit(),
+                details.comment());
+        details.installers().forEach(installer -> entity.getInstallers().add(new WorkOrderInstallerJpaEntity(
+                newId(), entity, installer.name(), installer.otherText())));
+        details.options().forEach(option -> entity.getOptions().add(new WorkOrderOptionJpaEntity(
+                newId(), entity, option.optionType(), option.comment())));
+    }
+
+    private static String newId() {
+        // Obstoječi zapisi imajo cuid ID-je (Prisma), novi dobijo UUID; stolpec je TEXT in format ni preverjan.
+        return UUID.randomUUID().toString();
     }
 
     private static List<Predicate> buildPredicates(WorkOrderSearch search, CriteriaBuilder criteriaBuilder,
