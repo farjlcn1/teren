@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
+import { listVehicleOptions } from "@/lib/api/vehicles";
 import { buildWorkOrderQuery, type WorkOrderFilters } from "@/lib/work-orders/query";
 import { ColumnPicker, type ColumnDef } from "./column-picker";
 import { AdminExportButton } from "./admin-export-button";
@@ -144,7 +145,7 @@ export default async function NalogiPage({ searchParams }: { searchParams: Promi
       take: 500,
     }),
     listClientOptions(),
-    prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
+    listVehicleOptions(),
     prisma.workOrder.findMany({ distinct: ["imei"], orderBy: { imei: "asc" }, select: { imei: true } }),
   ]);
   const imeis = imeiRows.map((r) => r.imei);

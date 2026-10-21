@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
+import { listVehicleOptions } from "@/lib/api/vehicles";
 import { EditWorkOrderForm } from "./edit-work-order-form";
 
 export default async function EditWorkOrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,7 +12,7 @@ export default async function EditWorkOrderPage({ params }: { params: Promise<{ 
   const [order, clients, vehicles] = await Promise.all([
     prisma.workOrder.findUnique({ where: { id }, include: { installers: true, options: true } }),
     listClientOptions(),
-    prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
+    listVehicleOptions(),
   ]);
 
   if (!order) notFound();

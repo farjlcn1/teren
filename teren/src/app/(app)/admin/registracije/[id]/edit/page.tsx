@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { findVehicle } from "@/lib/api/vehicles";
 import { EditVehicleForm } from "./edit-vehicle-form";
 
 export default async function EditVehiclePage({ params }: { params: Promise<{ id: string }> }) {
   await requirePermission("canManageVehicles");
   const { id } = await params;
 
-  const vehicle = await prisma.vehicle.findUnique({ where: { id } });
+  const vehicle = await findVehicle(id);
   if (!vehicle) notFound();
 
   return (

@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { listClientOptions } from "@/lib/api/clients";
+import { listVehicleOptions } from "@/lib/api/vehicles";
 import { PlanCalendar } from "./plan-calendar";
 
 function startOfWeek(d: Date): Date {
@@ -27,7 +28,7 @@ export default async function PlanPage({
 
   const [clients, vehicles, groups] = await Promise.all([
     listClientOptions(),
-    prisma.vehicle.findMany({ orderBy: { plate: "asc" }, select: { plate: true } }),
+    listVehicleOptions(),
     prisma.planGroup.findMany({
       where: { startAt: { lt: weekEnd }, endAt: { gt: weekStart } },
       orderBy: { startAt: "asc" },

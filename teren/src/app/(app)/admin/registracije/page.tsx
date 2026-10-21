@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
+import { getVehicleSyncConfig, listVehicles } from "@/lib/api/vehicles";
 import { AddVehicleForm } from "./add-vehicle-form";
 import { ImportVehiclesForm } from "./import-form";
 import { SyncForm } from "./sync-form";
@@ -16,8 +16,8 @@ export default async function RegistracijePage() {
   await requirePermission("canManageVehicles");
 
   const [vehicles, syncConfig] = await Promise.all([
-    prisma.vehicle.findMany({ orderBy: { plate: "asc" } }),
-    prisma.vehicleSyncConfig.findUnique({ where: { id: "default" } }),
+    listVehicles(),
+    getVehicleSyncConfig(),
   ]);
 
   return (
@@ -30,10 +30,10 @@ export default async function RegistracijePage() {
       </div>
 
       <SyncForm
-        apiUrl={syncConfig?.apiUrl ?? ""}
-        hasToken={Boolean(syncConfig?.apiToken)}
-        lastSyncAt={syncConfig?.lastSyncAt ? syncConfig.lastSyncAt.toLocaleString("sl-SI") : null}
-        lastSyncStatus={syncConfig?.lastSyncStatus ?? null}
+        apiUrl={syncConfig.apiUrl ?? ""}
+        hasToken={syncConfig.hasToken}
+        lastSyncAt={syncConfig.lastSyncAt ? new Date(syncConfig.lastSyncAt).toLocaleString("sl-SI") : null}
+        lastSyncStatus={syncConfig.lastSyncStatus}
       />
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
